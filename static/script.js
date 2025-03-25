@@ -1,3 +1,5 @@
+let ws;
+
 // Check if user is authenticated
 document.addEventListener('DOMContentLoaded', () => {
     const displayName = localStorage.getItem('displayName');
@@ -9,11 +11,81 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update UI with display name
     document.getElementById('current-user').textContent = displayName;
     
-    fetchCards();
+    // Connect to WebSocket instead of fetching cards directly
+    connectWebSocket();
     setupDropZones();
 });
 
+function connectWebSocket() {
+    // Create WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+    ws.onopen = () => {
+        console.log('Connected to WebSocket');
+    };
+
+    ws.onclose = () => {
+        console.log('Disconnected from WebSocket');
+        // Try to reconnect after a delay
+        setTimeout(connectWebSocket, 3000);
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+
+    ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        handleWebSocketMessage(message);
+    };
+}
+
+function handleWebSocketMessage(message) {
+    switch (message.type) {
+        case 'init':
+            // Clear existing cards
+            document.querySelectorAll('.cards').forEach(column => {
+                column.innerHTML = '';
+            });
+            // Add all cards from the initial state
+            message.payload.forEach(card => {
+                const cardElement = createCardElement(card.text, card.id, card.author);
+                document.getElementById(card.column).appendChild(cardElement);
+            });
+            break;
+
+        case 'cardAdded':
+            const card = message.payload;
+            // Only add the card if it wasn't created by the current user
+            if (card.author !== localStorage.getItem('displayName')) {
+                const cardElement = createCardElement(card.text, card.id, card.author);
+                document.getElementById(card.column).appendChild(cardElement);
+            }
+            break;
+
+        case 'cardDeleted':
+            const cardId = message.payload;
+            const cardToDelete = document.querySelector(`[data-card-id="${cardId}"]`);
+            if (cardToDelete) {
+                cardToDelete.remove();
+            }
+            break;
+
+        case 'cardMoved':
+            const moveData = message.payload;
+            const cardElement = document.querySelector(`[data-card-id="${moveData.id}"]`);
+            if (cardElement) {
+                document.getElementById(moveData.newColumn).appendChild(cardElement);
+            }
+            break;
+    }
+}
+
 function logout() {
+    if (ws) {
+        ws.close();
+    }
     localStorage.removeItem('displayName');
     window.location.href = '/';
 }
@@ -65,26 +137,6 @@ function setupDropZones() {
             }
         });
     });
-}
-
-async function fetchCards() {
-    try {
-        const response = await fetch('/api/cards');
-        const cards = await response.json();
-        
-        // Clear existing cards
-        document.querySelectorAll('.cards').forEach(column => {
-            column.innerHTML = '';
-        });
-
-        // Add cards to their respective columns
-        cards.forEach(card => {
-            const cardElement = createCardElement(card.text, card.id, card.author);
-            document.getElementById(card.column).appendChild(cardElement);
-        });
-    } catch (error) {
-        console.error('Error fetching cards:', error);
-    }
 }
 
 async function deleteCard(cardId, cardElement) {
