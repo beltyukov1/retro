@@ -126,6 +126,7 @@ body {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 2rem;
+    align-items: start;
 }
 
 .column {
@@ -133,6 +134,9 @@ body {
     border-radius: 8px;
     padding: 1rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
 }
 
 .column h2 {
@@ -143,7 +147,8 @@ body {
 }
 
 .cards {
-    min-height: 200px;
+    flex: 1;
+    overflow-y: auto;
     margin-bottom: 1rem;
     padding: 0.5rem;
     border-radius: 4px;
@@ -267,4 +272,22 @@ body {
 
 .cancel-button:hover {
     background: #c0392b;
+}
+
+.add-card-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+    margin-top: auto;
+}
+
+.add-card-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.add-card-input::placeholder {
+    color: #95a5a6;
 } 

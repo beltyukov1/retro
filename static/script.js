@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Connect to WebSocket instead of fetching cards directly
     connectWebSocket();
     setupDropZones();
+    setupAddCardInputs();
 });
 
 function connectWebSocket() {
@@ -156,70 +157,47 @@ async function deleteCard(cardId, cardElement) {
     }
 }
 
-function addCard(columnId) {
-    const cardElement = document.createElement('div');
-    cardElement.className = 'card';
-    
-    const textarea = document.createElement('textarea');
-    textarea.placeholder = 'Enter your text here...';
-    textarea.rows = 3;
-    
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'card-buttons';
-    
-    const saveButton = document.createElement('button');
-    saveButton.className = 'save-button';
-    saveButton.textContent = 'Save';
-    saveButton.onclick = async () => {
-        const text = textarea.value.trim();
-        if (text) {
-            try {
-                const cardId = Date.now().toString();
-                const displayName = localStorage.getItem('displayName');
-                const userColor = localStorage.getItem('userColor');
-                const response = await fetch('/api/cards', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        id: cardId,
-                        text: text,
-                        column: columnId,
-                        author: displayName,
-                        color: userColor
-                    })
-                });
+function setupAddCardInputs() {
+    document.querySelectorAll('.add-card-input').forEach(input => {
+        input.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                const text = input.value.trim();
+                if (text) {
+                    try {
+                        const cardId = Date.now().toString();
+                        const displayName = localStorage.getItem('displayName');
+                        const userColor = localStorage.getItem('userColor');
+                        const columnId = input.dataset.column;
+                        
+                        const response = await fetch('/api/cards', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                id: cardId,
+                                text: text,
+                                column: columnId,
+                                author: displayName,
+                                color: userColor
+                            })
+                        });
 
-                if (response.ok) {
-                    // Replace the editing view with the final card view
-                    const newCardElement = createCardElement(text, cardId, displayName, userColor);
-                    cardElement.parentNode.replaceChild(newCardElement, cardElement);
-                } else {
-                    throw new Error('Failed to save card');
+                        if (response.ok) {
+                            const cardElement = createCardElement(text, cardId, displayName, userColor);
+                            document.getElementById(columnId).appendChild(cardElement);
+                            input.value = ''; // Clear the input
+                        } else {
+                            throw new Error('Failed to save card');
+                        }
+                    } catch (error) {
+                        console.error('Error saving card:', error);
+                        alert('Failed to save card. Please try again.');
+                    }
                 }
-            } catch (error) {
-                console.error('Error saving card:', error);
-                alert('Failed to save card. Please try again.');
             }
-        }
-    };
-
-    const cancelButton = document.createElement('button');
-    cancelButton.className = 'cancel-button';
-    cancelButton.textContent = 'Cancel';
-    cancelButton.onclick = () => {
-        cardElement.remove();
-    };
-
-    buttonContainer.appendChild(saveButton);
-    buttonContainer.appendChild(cancelButton);
-    
-    cardElement.appendChild(textarea);
-    cardElement.appendChild(buttonContainer);
-    
-    document.getElementById(columnId).appendChild(cardElement);
-    textarea.focus();
+        });
+    });
 }
 
 function createCardElement(text, cardId, author, color) {
