@@ -12,16 +12,46 @@
             <h1>Welcome to Retro Board</h1>
             <div class="name-input-container">
                 <input type="text" id="display-name" placeholder="Enter your display name" maxlength="30">
-                <button id="start-button" class="primary-button" onclick="startRetro()">Start Retro</button>
             </div>
+            <div class="color-selection">
+                <h3>Choose your card color</h3>
+                <div class="color-options">
+                    <button class="color-option" data-color="#FFB3BA" style="background-color: #FFB3BA"></button>
+                    <button class="color-option" data-color="#BAFFC9" style="background-color: #BAFFC9"></button>
+                    <button class="color-option" data-color="#BAE1FF" style="background-color: #BAE1FF"></button>
+                    <button class="color-option" data-color="#FFFFBA" style="background-color: #FFFFBA"></button>
+                    <button class="color-option" data-color="#FFB3F7" style="background-color: #FFB3F7"></button>
+                    <button class="color-option" data-color="#B3FFF7" style="background-color: #B3FFF7"></button>
+                </div>
+            </div>
+            <button id="start-button" class="primary-button" onclick="startRetro()">Start Retro</button>
         </div>
     </div>
     <script>
+        let selectedColor = '#FFB3BA'; // Default color
+
+        // Set up color selection
+        document.querySelectorAll('.color-option').forEach(button => {
+            button.addEventListener('click', () => {
+                // Remove active class from all buttons
+                document.querySelectorAll('.color-option').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                // Add active class to selected button
+                button.classList.add('active');
+                selectedColor = button.dataset.color;
+            });
+        });
+
+        // Set default active color
+        document.querySelector('.color-option').classList.add('active');
+
         function startRetro() {
             const displayName = document.getElementById('display-name').value.trim();
             if (displayName) {
-                // Store the display name and redirect to the board
+                // Store both the display name and color
                 localStorage.setItem('displayName', displayName);
+                localStorage.setItem('userColor', selectedColor);
                 window.location.href = '/board.html';
             } else {
                 alert('Please enter your display name');
@@ -35,8 +65,9 @@
             }
         });
 
-        // Clear any existing display name
+        // Clear any existing display name and color
         localStorage.removeItem('displayName');
+        localStorage.removeItem('userColor');
     </script>
 </body>
 </html> 

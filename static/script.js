@@ -50,7 +50,7 @@ function handleWebSocketMessage(message) {
             });
             // Add all cards from the initial state
             message.payload.forEach(card => {
-                const cardElement = createCardElement(card.text, card.id, card.author);
+                const cardElement = createCardElement(card.text, card.id, card.author, card.color);
                 document.getElementById(card.column).appendChild(cardElement);
             });
             break;
@@ -59,7 +59,7 @@ function handleWebSocketMessage(message) {
             const card = message.payload;
             // Only add the card if it wasn't created by the current user
             if (card.author !== localStorage.getItem('displayName')) {
-                const cardElement = createCardElement(card.text, card.id, card.author);
+                const cardElement = createCardElement(card.text, card.id, card.author, card.color);
                 document.getElementById(card.column).appendChild(cardElement);
             }
             break;
@@ -176,6 +176,7 @@ function addCard(columnId) {
             try {
                 const cardId = Date.now().toString();
                 const displayName = localStorage.getItem('displayName');
+                const userColor = localStorage.getItem('userColor');
                 const response = await fetch('/api/cards', {
                     method: 'POST',
                     headers: {
@@ -185,13 +186,14 @@ function addCard(columnId) {
                         id: cardId,
                         text: text,
                         column: columnId,
-                        author: displayName
+                        author: displayName,
+                        color: userColor
                     })
                 });
 
                 if (response.ok) {
                     // Replace the editing view with the final card view
-                    const newCardElement = createCardElement(text, cardId, displayName);
+                    const newCardElement = createCardElement(text, cardId, displayName, userColor);
                     cardElement.parentNode.replaceChild(newCardElement, cardElement);
                 } else {
                     throw new Error('Failed to save card');
@@ -220,11 +222,16 @@ function addCard(columnId) {
     textarea.focus();
 }
 
-function createCardElement(text, cardId, author) {
+function createCardElement(text, cardId, author, color) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     cardElement.draggable = true;
     cardElement.dataset.cardId = cardId;
+    
+    // Apply the background color
+    if (color) {
+        cardElement.style.backgroundColor = color;
+    }
     
     cardElement.addEventListener('dragstart', () => {
         cardElement.classList.add('dragging');

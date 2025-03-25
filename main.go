@@ -14,6 +14,7 @@ type Card struct {
 	Text   string `json:"text"`
 	Column string `json:"column"`
 	Author string `json:"author"`
+	Color  string `json:"color"`
 }
 
 type RetroBoard struct {
