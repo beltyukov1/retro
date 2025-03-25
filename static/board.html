@@ -9,7 +9,14 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Retro Board</h1>
+            <div class="header-left">
+                <h1>Retro Board</h1>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="hide-content-toggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">Hide Content</span>
+                </label>
+            </div>
             <div class="user-info">
                 Logged in as: <span id="current-user"></span>
                 <button onclick="logout()" class="logout-button">Logout</button>

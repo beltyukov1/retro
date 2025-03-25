@@ -1,4 +1,7 @@
 let ws;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 3000;
 let usedColors = {}; // Add global usedColors object
 
 // Check if user is authenticated
@@ -16,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     connectWebSocket();
     setupDropZones();
     setupAddCardInputs();
+    setupHideContentToggle();
 });
 
 function connectWebSocket() {
@@ -25,12 +29,39 @@ function connectWebSocket() {
 
     ws.onopen = () => {
         console.log('Connected to WebSocket');
+        reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+        
+        // Request initial board state after connection
+        const userColor = localStorage.getItem('userColor');
+        if (userColor) {
+            ws.send(JSON.stringify({
+                type: 'join',
+                payload: {
+                    color: userColor
+                }
+            }));
+        }
     };
 
-    ws.onclose = () => {
-        console.log('Disconnected from WebSocket');
-        // Try to reconnect after a delay
-        setTimeout(connectWebSocket, 3000);
+    ws.onclose = (event) => {
+        console.log('Disconnected from WebSocket:', event.code, event.reason);
+        
+        // Don't try to reconnect if this was an intentional closure (logout)
+        if (event.code === 1000 && event.reason === 'Logout') {
+            console.log('Intentional logout, not reconnecting');
+            return;
+        }
+        
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+            setTimeout(() => {
+                reconnectAttempts++;
+                connectWebSocket();
+            }, RECONNECT_DELAY);
+        } else {
+            console.log('Max reconnection attempts reached. Please refresh the page.');
+            alert('Lost connection to the server. Please refresh the page to reconnect.');
+        }
     };
 
     ws.onerror = (error) => {
@@ -41,58 +72,71 @@ function connectWebSocket() {
         const message = JSON.parse(event.data);
         handleWebSocketMessage(message);
     };
+
+    // Add visibility change handler
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+}
+
+function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+        // Check if WebSocket is closed or closing
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+            console.log('Page visible, reconnecting WebSocket...');
+            reconnectAttempts = 0; // Reset attempts when user returns
+            connectWebSocket();
+        } else if (ws.readyState === WebSocket.OPEN) {
+            // If connection is open, request current state
+            const userColor = localStorage.getItem('userColor');
+            if (userColor) {
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    payload: {
+                        color: userColor
+                    }
+                }));
+            }
+        }
+    }
 }
 
 function handleWebSocketMessage(message) {
     switch (message.type) {
-        case 'init':
-            // Clear existing cards
-            document.querySelectorAll('.cards').forEach(column => {
-                column.innerHTML = '';
-            });
-            // Add all cards from the initial state
-            message.payload.cards.forEach(card => {
-                const cardElement = createCardElement(card.text, card.id, card.author, card.color);
-                document.getElementById(card.column).appendChild(cardElement);
-            });
-            // Update color picker with used colors
-            usedColors = message.payload.usedColors;
-            updateColorPicker(usedColors);
-            break;
-
         case 'cardAdded':
-            const card = message.payload;
-            // Only add the card if it wasn't created by the current user
-            if (card.author !== localStorage.getItem('displayName')) {
-                const cardElement = createCardElement(card.text, card.id, card.author, card.color);
-                document.getElementById(card.column).appendChild(cardElement);
-            }
+            addCardToBoard(message.payload);
             break;
-
         case 'cardDeleted':
-            const cardId = message.payload;
-            const cardToDelete = document.querySelector(`[data-card-id="${cardId}"]`);
-            if (cardToDelete) {
-                cardToDelete.remove();
-            }
+            deleteCardFromBoard(message.payload);
             break;
-
         case 'cardMoved':
-            const moveData = message.payload;
-            const cardElement = document.querySelector(`[data-card-id="${moveData.id}"]`);
-            if (cardElement) {
-                document.getElementById(moveData.newColumn).appendChild(cardElement);
-            }
+            moveCardInBoard(message.payload.id, message.payload.newColumn);
             break;
-
         case 'colorUsed':
             usedColors[message.payload] = true;
             updateColorPicker(usedColors);
             break;
-
         case 'colorReleased':
             delete usedColors[message.payload];
             updateColorPicker(usedColors);
+            break;
+        case 'hideContentToggled':
+            const toggle = document.getElementById('hide-content-toggle');
+            toggle.checked = message.payload;
+            updateCardVisibility(message.payload);
+            break;
+        case 'boardState':
+            // Handle initial board state
+            if (message.payload.cards) {
+                message.payload.cards.forEach(card => addCardToBoard(card));
+            }
+            if (message.payload.usedColors) {
+                Object.assign(usedColors, message.payload.usedColors);
+                updateColorPicker(usedColors);
+            }
+            if (message.payload.hideContent !== undefined) {
+                const toggle = document.getElementById('hide-content-toggle');
+                toggle.checked = message.payload.hideContent;
+                updateCardVisibility(message.payload.hideContent);
+            }
             break;
     }
 }
@@ -119,11 +163,16 @@ function logout() {
         if (userColor) {
             ws.send(JSON.stringify({
                 type: 'logout',
-                color: userColor
+                payload: {
+                    color: userColor
+                }
             }));
         }
-        ws.close();
+        // Close with normal closure code
+        ws.close(1000, 'Logout');
     }
+    // Remove visibility change handler
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
     localStorage.removeItem('displayName');
     localStorage.removeItem('userColor');
     window.location.href = '/';
@@ -144,7 +193,7 @@ function setupDropZones() {
             zone.classList.remove('drag-over');
         });
 
-        zone.addEventListener('drop', async (e) => {
+        zone.addEventListener('drop', (e) => {
             e.preventDefault();
             zone.classList.remove('drag-over');
             const cardElement = document.querySelector('.dragging');
@@ -152,26 +201,18 @@ function setupDropZones() {
                 const cardId = cardElement.dataset.cardId;
                 const newColumn = zone.id;
                 
-                try {
-                    const response = await fetch('/api/cards', {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'moveCard',
+                        payload: {
                             id: cardId,
                             newColumn: newColumn
-                        })
-                    });
-
-                    if (response.ok) {
-                        zone.appendChild(cardElement);
-                    } else {
-                        throw new Error('Failed to update card position');
-                    }
-                } catch (error) {
-                    console.error('Error moving card:', error);
-                    alert('Failed to move card. Please try again.');
+                        }
+                    }));
+                    zone.appendChild(cardElement);
+                } else {
+                    console.error('WebSocket is not connected');
+                    alert('Failed to move card. Please refresh the page.');
                 }
             }
         });
@@ -179,62 +220,82 @@ function setupDropZones() {
 }
 
 async function deleteCard(cardId, cardElement) {
-    try {
-        const response = await fetch(`/api/cards?id=${cardId}`, {
-            method: 'DELETE'
-        });
-
-        if (response.ok) {
-            cardElement.remove();
-        } else {
-            throw new Error('Failed to delete card');
-        }
-    } catch (error) {
-        console.error('Error deleting card:', error);
-        alert('Failed to delete card. Please try again.');
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'deleteCard',
+            payload: cardId
+        }));
+        cardElement.remove();
+    } else {
+        console.error('WebSocket is not connected');
+        alert('Failed to delete card. Please refresh the page.');
     }
 }
 
 function setupAddCardInputs() {
     document.querySelectorAll('.add-card-input').forEach(input => {
-        input.addEventListener('keypress', async (e) => {
+        input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 const text = input.value.trim();
                 if (text) {
-                    try {
-                        const cardId = Date.now().toString();
-                        const displayName = localStorage.getItem('displayName');
-                        const userColor = localStorage.getItem('userColor');
-                        const columnId = input.dataset.column;
+                    const cardId = Date.now().toString();
+                    const displayName = localStorage.getItem('displayName');
+                    const userColor = localStorage.getItem('userColor');
+                    const columnId = input.dataset.column;
+                    
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const card = {
+                            id: cardId,
+                            text: text,
+                            column: columnId,
+                            author: displayName,
+                            color: userColor
+                        };
                         
-                        const response = await fetch('/api/cards', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                id: cardId,
-                                text: text,
-                                column: columnId,
-                                author: displayName,
-                                color: userColor
-                            })
-                        });
-
-                        if (response.ok) {
-                            const cardElement = createCardElement(text, cardId, displayName, userColor);
-                            document.getElementById(columnId).appendChild(cardElement);
-                            input.value = ''; // Clear the input
-                        } else {
-                            throw new Error('Failed to save card');
-                        }
-                    } catch (error) {
-                        console.error('Error saving card:', error);
-                        alert('Failed to save card. Please try again.');
+                        ws.send(JSON.stringify({
+                            type: 'addCard',
+                            payload: card
+                        }));
+                        
+                        const cardElement = createCardElement(text, cardId, displayName, userColor);
+                        document.getElementById(columnId).appendChild(cardElement);
+                        input.value = ''; // Clear the input
+                    } else {
+                        console.error('WebSocket is not connected');
+                        alert('Failed to add card. Please refresh the page.');
                     }
                 }
             }
         });
+    });
+}
+
+function setupHideContentToggle() {
+    const toggle = document.getElementById('hide-content-toggle');
+    toggle.addEventListener('change', () => {
+        const isHidden = toggle.checked;
+        updateCardVisibility(isHidden);
+        
+        // Send the toggle state to the server
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'toggleHideContent',
+                payload: isHidden
+            }));
+        }
+    });
+}
+
+function updateCardVisibility(isHidden) {
+    document.querySelectorAll('.card-text').forEach(textElement => {
+        if (isHidden) {
+            textElement.dataset.originalText = textElement.textContent;
+            textElement.textContent = 'Hidden';
+            textElement.classList.add('hidden-content');
+        } else {
+            textElement.textContent = textElement.dataset.originalText;
+            textElement.classList.remove('hidden-content');
+        }
     });
 }
 
@@ -263,7 +324,15 @@ function createCardElement(text, cardId, author, color) {
     const textDiv = document.createElement('div');
     textDiv.className = 'card-text';
     textDiv.textContent = text;
-
+    textDiv.dataset.originalText = text; // Store original text
+    
+    // Check if content should be hidden based on current toggle state
+    const toggle = document.getElementById('hide-content-toggle');
+    if (toggle && toggle.checked) {
+        textDiv.textContent = 'Hidden';
+        textDiv.classList.add('hidden-content');
+    }
+    
     const authorDiv = document.createElement('div');
     authorDiv.className = 'card-author';
     authorDiv.textContent = author;
@@ -287,4 +356,26 @@ function createCardElement(text, cardId, author, color) {
     cardElement.appendChild(deleteButton);
     
     return cardElement;
+}
+
+function addCardToBoard(card) {
+    // Only add the card if it wasn't created by the current user
+    if (card.author !== localStorage.getItem('displayName')) {
+        const cardElement = createCardElement(card.text, card.id, card.author, card.color);
+        document.getElementById(card.column).appendChild(cardElement);
+    }
+}
+
+function deleteCardFromBoard(cardId) {
+    const cardToDelete = document.querySelector(`[data-card-id="${cardId}"]`);
+    if (cardToDelete) {
+        cardToDelete.remove();
+    }
+}
+
+function moveCardInBoard(cardId, newColumn) {
+    const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
+    if (cardElement) {
+        document.getElementById(newColumn).appendChild(cardElement);
+    }
 } 

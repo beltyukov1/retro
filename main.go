@@ -19,8 +19,9 @@ type Card struct {
 
 type RetroBoard struct {
 	sync.RWMutex
-	Cards      []Card
-	UsedColors map[string]bool
+	Cards       []Card
+	UsedColors  map[string]bool
+	HideContent bool
 }
 
 type WSMessage struct {
@@ -74,51 +75,188 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		clientsMutex.Unlock()
 	}()
 
-	// Send initial state
+	// Send initial board state
 	board.RLock()
-	initialMsg := WSMessage{
-		Type: "init",
-		Payload: struct {
-			Cards      []Card          `json:"cards"`
-			UsedColors map[string]bool `json:"usedColors"`
-		}{
-			Cards:      board.Cards,
-			UsedColors: board.UsedColors,
+	initialState := WSMessage{
+		Type: "boardState",
+		Payload: map[string]interface{}{
+			"cards":       board.Cards,
+			"usedColors":  board.UsedColors,
+			"hideContent": board.HideContent,
 		},
 	}
 	board.RUnlock()
-	conn.WriteJSON(initialMsg)
+
+	if err := conn.WriteJSON(initialState); err != nil {
+		log.Printf("Error sending initial state: %v", err)
+		return
+	}
 
 	// Handle incoming messages
 	for {
-		var msg struct {
-			Type  string `json:"type"`
-			Color string `json:"color"`
-		}
+		var msg WSMessage
 		err := conn.ReadJSON(&msg)
 		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+				log.Printf("WebSocket read error: %v", err)
+			}
 			break
 		}
 
-		if msg.Type == "join" {
+		switch msg.Type {
+		case "addCard":
+			// Convert payload to Card
+			payloadBytes, err := json.Marshal(msg.Payload)
+			if err != nil {
+				log.Printf("Error marshaling card payload: %v", err)
+				continue
+			}
+			var card Card
+			if err := json.Unmarshal(payloadBytes, &card); err != nil {
+				log.Printf("Error unmarshaling card: %v", err)
+				continue
+			}
+
 			board.Lock()
-			board.UsedColors[msg.Color] = true
+			board.Cards = append(board.Cards, card)
 			board.Unlock()
 
-			// Broadcast the new color to all clients
+			// Broadcast the new card to all clients
+			broadcastToClients(WSMessage{
+				Type:    "cardAdded",
+				Payload: card,
+			})
+
+		case "deleteCard":
+			cardID, ok := msg.Payload.(string)
+			if !ok {
+				log.Printf("Invalid card ID format")
+				continue
+			}
+
+			board.Lock()
+			for i, card := range board.Cards {
+				if card.ID == cardID {
+					// Remove the card by swapping with the last element and truncating
+					board.Cards[i] = board.Cards[len(board.Cards)-1]
+					board.Cards = board.Cards[:len(board.Cards)-1]
+
+					// Broadcast the deletion to all clients
+					broadcastToClients(WSMessage{
+						Type:    "cardDeleted",
+						Payload: cardID,
+					})
+					break
+				}
+			}
+			board.Unlock()
+
+		case "moveCard":
+			// Convert payload to move data
+			payloadBytes, err := json.Marshal(msg.Payload)
+			if err != nil {
+				log.Printf("Error marshaling move payload: %v", err)
+				continue
+			}
+			var moveData struct {
+				ID        string `json:"id"`
+				NewColumn string `json:"newColumn"`
+			}
+			if err := json.Unmarshal(payloadBytes, &moveData); err != nil {
+				log.Printf("Error unmarshaling move data: %v", err)
+				continue
+			}
+
+			board.Lock()
+			for i, card := range board.Cards {
+				if card.ID == moveData.ID {
+					board.Cards[i].Column = moveData.NewColumn
+
+					// Broadcast the update to all clients
+					broadcastToClients(WSMessage{
+						Type:    "cardMoved",
+						Payload: moveData,
+					})
+					break
+				}
+			}
+			board.Unlock()
+
+		case "join":
+			// Extract color from the payload structure
+			payloadBytes, err := json.Marshal(msg.Payload)
+			if err != nil {
+				log.Printf("Error marshaling join payload: %v", err)
+				continue
+			}
+			var joinData struct {
+				Color string `json:"color"`
+			}
+			if err := json.Unmarshal(payloadBytes, &joinData); err != nil {
+				log.Printf("Error unmarshaling join data: %v", err)
+				continue
+			}
+
+			if joinData.Color == "" {
+				log.Printf("No color provided in join message")
+				continue
+			}
+
+			board.Lock()
+			board.UsedColors[joinData.Color] = true
+			board.Unlock()
+
+			// Broadcast the color selection to all clients
 			broadcastToClients(WSMessage{
 				Type:    "colorUsed",
-				Payload: msg.Color,
+				Payload: joinData.Color,
 			})
-		} else if msg.Type == "logout" {
+
+		case "logout":
+			// Extract color from the payload structure
+			payloadBytes, err := json.Marshal(msg.Payload)
+			if err != nil {
+				log.Printf("Error marshaling logout payload: %v", err)
+				continue
+			}
+			var logoutData struct {
+				Color string `json:"color"`
+			}
+			if err := json.Unmarshal(payloadBytes, &logoutData); err != nil {
+				log.Printf("Error unmarshaling logout data: %v", err)
+				continue
+			}
+
+			if logoutData.Color == "" {
+				log.Printf("No color provided in logout message")
+				continue
+			}
+
 			board.Lock()
-			delete(board.UsedColors, msg.Color)
+			delete(board.UsedColors, logoutData.Color)
 			board.Unlock()
 
-			// Broadcast the color release to all clients
+			// Broadcast the color release to all clients immediately
 			broadcastToClients(WSMessage{
 				Type:    "colorReleased",
-				Payload: msg.Color,
+				Payload: logoutData.Color,
+			})
+
+		case "toggleHideContent":
+			hideContent, ok := msg.Payload.(bool)
+			if !ok {
+				log.Printf("Invalid hide content format")
+				continue
+			}
+
+			board.Lock()
+			board.HideContent = hideContent
+			board.Unlock()
+
+			// Broadcast the toggle state to all clients
+			broadcastToClients(WSMessage{
+				Type:    "hideContentToggled",
+				Payload: hideContent,
 			})
 		}
 	}
@@ -228,5 +366,18 @@ func handleCards(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func getBoardState() WSMessage {
+	board.RLock()
+	defer board.RUnlock()
+	return WSMessage{
+		Type: "boardState",
+		Payload: map[string]interface{}{
+			"cards":       board.Cards,
+			"usedColors":  board.UsedColors,
+			"hideContent": board.HideContent,
+		},
 	}
 }

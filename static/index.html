@@ -138,7 +138,9 @@
                 // Send the selected color
                 ws.send(JSON.stringify({
                     type: 'join',
-                    color: selectedColor
+                    payload: {
+                        color: selectedColor
+                    }
                 }));
                 
                 // Redirect to board page
