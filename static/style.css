@@ -301,12 +301,14 @@ body {
     background: #fff;
     border: 1px solid #e1e1e1;
     border-radius: 4px;
-    padding: 1rem;
-    margin-bottom: 0.5rem;
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.3rem;
     cursor: move;
     transition: all 0.3s ease;
     position: relative;
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
     user-select: none;
 }
 
@@ -320,7 +322,7 @@ body {
 }
 
 .card-content {
-    margin-right: 1.5rem;
+    flex: 1;
 }
 
 .card-text {
@@ -330,27 +332,21 @@ body {
 
 .card-author {
     font-size: 0.8rem;
-    color: #666;
+    color: #888;
     font-style: italic;
-    margin-bottom: 0.5rem;
-}
-
-.card-footer {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    margin-top: 0.5rem;
+    margin-bottom: 0.15rem;
 }
 
 .like-container {
     display: flex;
+    flex-direction: row;
     align-items: center;
+    justify-content: center;
     gap: 0.25rem;
     cursor: pointer;
     user-select: none;
-    position: absolute;
-    bottom: 0.5rem;
-    right: 0.5rem;
+    position: relative;
+    margin-left: 0;
 }
 
 .heart-icon {
@@ -362,7 +358,6 @@ body {
     width: 1.2em;
     height: 1.2em;
     color: #bbb;
-    margin-bottom: 1px;
 }
 
 .heart-icon svg {
@@ -391,7 +386,7 @@ body {
 }
 
 .like-count {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: #666;
     display: inline-block;
     line-height: 1;
@@ -408,8 +403,9 @@ body {
     transition: opacity 0.2s ease;
     border-radius: 4px;
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
+    top: 0.25rem;
+    right: 0.25rem;
+    z-index: 2;
 }
 
 .card:hover .delete-button {

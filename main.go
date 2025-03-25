@@ -383,11 +383,38 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			})
 
 		case "sortCards":
+			// Extract payload for sort data
+			payloadBytes, err := json.Marshal(msg.Payload)
+			if err != nil {
+				log.Printf("Error marshaling sort payload: %v", err)
+				continue
+			}
+			var sortData struct {
+				SortOrder string `json:"sortOrder"`
+			}
+			if err := json.Unmarshal(payloadBytes, &sortData); err != nil {
+				log.Printf("Error unmarshaling sort data: %v", err)
+				continue
+			}
+
 			board.Lock()
-			// Sort cards alphabetically by author ONLY
-			sort.Slice(board.Cards, func(i, j int) bool {
-				return board.Cards[i].Author < board.Cards[j].Author
-			})
+			// Sort cards based on the requested order
+			if sortData.SortOrder == "asc" {
+				// Sort by author in ascending order
+				sort.Slice(board.Cards, func(i, j int) bool {
+					return board.Cards[i].Author < board.Cards[j].Author
+				})
+			} else if sortData.SortOrder == "desc" {
+				// Sort by author in descending order
+				sort.Slice(board.Cards, func(i, j int) bool {
+					return board.Cards[i].Author > board.Cards[j].Author
+				})
+			} else {
+				// Reset to original order (by ID/time added)
+				sort.Slice(board.Cards, func(i, j int) bool {
+					return board.Cards[i].ID < board.Cards[j].ID
+				})
+			}
 			board.Unlock()
 
 			// Send personalized sorted cards to each client

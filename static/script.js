@@ -3,6 +3,7 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 3000;
 let usedColors = {}; // Add global usedColors object
+let currentSortOrder = 'asc'; // Start with ascending order
 
 // Check if user is authenticated
 document.addEventListener('DOMContentLoaded', () => {
@@ -447,10 +448,6 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     contentDiv.appendChild(textDiv);
     contentDiv.appendChild(authorDiv);
     
-    // Create card footer with like feature
-    const cardFooter = document.createElement('div');
-    cardFooter.className = 'card-footer';
-    
     // Create like container with heart icon and counter
     const likeContainer = document.createElement('div');
     likeContainer.className = 'like-container';
@@ -463,7 +460,7 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     
     const heartIcon = document.createElement('span');
     heartIcon.className = 'heart-icon';
-    heartIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>';
+    heartIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>';
     if (userLiked) {
         heartIcon.classList.add('filled');
     }
@@ -506,10 +503,9 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     
     likeContainer.appendChild(heartIcon);
     likeContainer.appendChild(likeCount);
-    cardFooter.appendChild(likeContainer);
-    contentDiv.appendChild(cardFooter);
     
     cardElement.appendChild(contentDiv);
+    cardElement.appendChild(likeContainer);
     cardElement.appendChild(deleteButton);
     
     return cardElement;
@@ -530,10 +526,15 @@ function deleteCardFromBoard(cardId) {
 }
 
 function sortCards() {
+    // Toggle sort order between asc and desc only
+    currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+    
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
             type: 'sortCards',
-            payload: {}
+            payload: {
+                sortOrder: currentSortOrder
+            }
         }));
     } else {
         console.error('WebSocket is not connected');
@@ -559,18 +560,20 @@ function updateCardLikes(data) {
     
     if (cardElement) {
         const likeContainer = cardElement.querySelector('.like-container');
-        const heartIcon = likeContainer.querySelector('.heart-icon');
-        const likeCountElement = likeContainer.querySelector('.like-count');
-        
-        // Update like count
-        likeCountElement.textContent = likeCount.toString();
-        
-        // Update heart icon status if this was the current user's action
-        if (liked !== undefined) {
-            if (liked) {
-                heartIcon.classList.add('filled');
-            } else {
-                heartIcon.classList.remove('filled');
+        if (likeContainer) {
+            const heartIcon = likeContainer.querySelector('.heart-icon');
+            const likeCountElement = likeContainer.querySelector('.like-count');
+            
+            // Update like count
+            likeCountElement.textContent = likeCount.toString();
+            
+            // Update heart icon status if this was the current user's action
+            if (liked !== undefined) {
+                if (liked) {
+                    heartIcon.classList.add('filled');
+                } else {
+                    heartIcon.classList.remove('filled');
+                }
             }
         }
     }
