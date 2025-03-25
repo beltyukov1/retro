@@ -335,9 +335,11 @@ function updateCardVisibility(isHidden) {
             textElement.dataset.originalText = textElement.textContent;
             textElement.textContent = 'Hidden';
             textElement.classList.add('hidden-content');
+            cardElement.classList.add('has-hidden-content');
         } else {
             textElement.textContent = textElement.dataset.originalText;
             textElement.classList.remove('hidden-content');
+            cardElement.classList.remove('has-hidden-content');
         }
     });
 }
@@ -378,6 +380,7 @@ function createCardElement(text, cardId, author, color) {
     if (toggle && toggle.checked && author !== currentUser) {
         textDiv.textContent = 'Hidden';
         textDiv.classList.add('hidden-content');
+        cardElement.classList.add('has-hidden-content');
     }
     
     const authorDiv = document.createElement('div');
