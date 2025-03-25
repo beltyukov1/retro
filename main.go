@@ -522,6 +522,14 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			board.Unlock()
+
+		case "ping":
+			// Simple ping-pong to keep the connection alive
+			// No need to broadcast or modify state
+			conn.WriteJSON(WSMessage{
+				Type:    "pong",
+				Payload: nil,
+			})
 		}
 	}
 }

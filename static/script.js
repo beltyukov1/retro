@@ -2,8 +2,11 @@ let ws;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 3000;
+const PING_INTERVAL = 30000; // 30 seconds interval for ping
 let usedColors = {}; // Add global usedColors object
-let currentSortOrder = 'asc'; // Start with ascending order
+let currentSortOrder = 'desc'; // Start with descending order
+let sessionActive = false; // Flag to track if user has an active session
+let pingIntervalId = null; // To store the interval ID for pings
 
 // Check if user is authenticated
 document.addEventListener('DOMContentLoaded', () => {
@@ -48,6 +51,12 @@ function connectWebSocket() {
 
     ws.onclose = (event) => {
         console.log('Disconnected from WebSocket:', event.code, event.reason);
+        
+        // Clear ping interval if it exists
+        if (pingIntervalId) {
+            clearInterval(pingIntervalId);
+            pingIntervalId = null;
+        }
         
         // Don't try to reconnect if this was an intentional logout
         if (event.code === 1000 && event.reason === 'Logout') {
@@ -94,18 +103,15 @@ function handleVisibilityChange() {
         // Check if WebSocket is closed or closing
         if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
             console.log('Page visible, reconnecting WebSocket...');
+            sessionActive = false; // Reset session state for new connection
             connectWebSocket();
         } else if (ws.readyState === WebSocket.OPEN) {
-            // If connection is open, request current state
-            const userColor = localStorage.getItem('userColor');
-            const displayName = localStorage.getItem('displayName');
-            if (userColor && displayName) {
+            // Only send a heartbeat/ping message if the connection is open and session already active
+            if (sessionActive) {
+                // Send a lightweight ping to keep the connection alive
                 ws.send(JSON.stringify({
-                    type: 'join',
-                    payload: {
-                        color: userColor,
-                        username: displayName
-                    }
+                    type: 'ping',
+                    payload: null
                 }));
             }
         }
@@ -148,6 +154,10 @@ function handleWebSocketMessage(message) {
             toggle.checked = message.payload;
             updateCardVisibility(message.payload);
             break;
+        case 'pong':
+            // Received pong from server, connection is still alive
+            console.log('Received pong from server, connection is active');
+            break;
         case 'error':
             // Display error message from server
             alert(message.payload);
@@ -162,6 +172,20 @@ function handleWebSocketMessage(message) {
         case 'joinSuccess':
             // Successfully joined with username
             console.log('Successfully joined the board');
+            sessionActive = true; // Mark the session as active
+            
+            // Set up ping interval after successful join
+            if (!pingIntervalId) {
+                pingIntervalId = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN && sessionActive) {
+                        console.log('Sending ping to server');
+                        ws.send(JSON.stringify({
+                            type: 'ping',
+                            payload: null
+                        }));
+                    }
+                }, PING_INTERVAL);
+            }
             break;
         case 'boardState':
             // Clear existing cards before adding new ones from board state
@@ -202,6 +226,14 @@ function updateColorPicker(usedColors) {
 }
 
 function logout() {
+    sessionActive = false; // Reset session state on logout
+    
+    // Clear ping interval if it exists
+    if (pingIntervalId) {
+        clearInterval(pingIntervalId);
+        pingIntervalId = null;
+    }
+    
     if (ws) {
         // Send logout message with the user's color and username
         const userColor = localStorage.getItem('userColor');
