@@ -112,12 +112,17 @@ body {
     margin: 0;
 }
 
+.controls-row {
+    display: flex;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+
 .toggle-switch {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     cursor: pointer;
-    margin-top: 0.5rem;
 }
 
 .toggle-switch input {
@@ -154,8 +159,25 @@ body {
 }
 
 .toggle-label {
+    margin-left: 0.5rem;
     font-size: 0.9rem;
     color: #666;
+}
+
+.sort-button {
+    margin-left: 1rem;
+    padding: 0.5rem 1rem;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.sort-button:hover {
+    background-color: #45a049;
 }
 
 .hidden-content {
@@ -219,8 +241,8 @@ body {
 }
 
 .cards.drag-over {
-    background-color: rgba(52, 152, 219, 0.1);
-    border: 2px dashed #3498db;
+    background-color: rgba(0, 0, 0, 0.1);
+    border: 2px dashed #ccc;
 }
 
 .card {
@@ -240,8 +262,7 @@ body {
 
 .card.dragging {
     opacity: 0.5;
-    transform: scale(0.95);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    pointer-events: none;
 }
 
 .card:hover {
@@ -358,4 +379,9 @@ body {
 
 .add-card-input::placeholder {
     color: #95a5a6;
+}
+
+/* Add CSS to prevent reordering same column */
+.cards .card.dragging + .card {
+    margin-top: 0;
 } 

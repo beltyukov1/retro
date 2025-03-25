@@ -108,24 +108,16 @@ function handleWebSocketMessage(message) {
             deleteCardFromBoard(message.payload);
             break;
         case 'cardMoved':
-            const { id, newColumn, newPosition } = message.payload;
+            const { id, newColumn } = message.payload;
             const cardElement = document.querySelector(`[data-card-id="${id}"]`);
             const columnElement = document.getElementById(newColumn);
             
             if (cardElement && columnElement) {
-                if (typeof newPosition === 'number') {
-                    // Handle reordering within the same column
-                    const children = Array.from(columnElement.children);
-                    if (newPosition >= children.length) {
-                        columnElement.appendChild(cardElement);
-                    } else {
-                        columnElement.insertBefore(cardElement, children[newPosition]);
-                    }
-                } else {
-                    // Handle moving to a different column without position
-                    columnElement.appendChild(cardElement);
-                }
+                columnElement.appendChild(cardElement);
             }
+            break;
+        case 'cardsSorted':
+            updateBoardWithSortedCards(message.payload);
             break;
         case 'colorUsed':
             usedColors[message.payload] = true;
@@ -202,12 +194,10 @@ function setupDropZones() {
             e.preventDefault();
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
-                zone.classList.add('drag-over');
-                const afterElement = getDragAfterElement(zone, e.clientY);
-                if (afterElement == null) {
-                    zone.appendChild(draggingElement);
-                } else {
-                    zone.insertBefore(draggingElement, afterElement);
+                // Only allow dropping if the card is coming from a different column
+                const sourceColumn = draggingElement.parentElement;
+                if (sourceColumn !== zone) {
+                    zone.classList.add('drag-over');
                 }
             }
         });
@@ -223,39 +213,26 @@ function setupDropZones() {
             if (cardElement) {
                 const cardId = cardElement.dataset.cardId;
                 const newColumn = zone.id;
-                const newPosition = Array.from(zone.children).indexOf(cardElement);
+                const sourceColumn = cardElement.parentElement;
                 
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'moveCard',
-                        payload: {
-                            id: cardId,
-                            newColumn: newColumn,
-                            newPosition: newPosition
-                        }
-                    }));
-                } else {
-                    console.error('WebSocket is not connected');
-                    alert('Failed to move card. Please refresh the page.');
+                // Only process the drop if it's to a different column
+                if (sourceColumn.id !== newColumn) {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'moveCard',
+                            payload: {
+                                id: cardId,
+                                newColumn: newColumn
+                            }
+                        }));
+                    } else {
+                        console.error('WebSocket is not connected');
+                        alert('Failed to move card. Please refresh the page.');
+                    }
                 }
             }
         });
     });
-}
-
-function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
-    
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 async function deleteCard(cardId, cardElement) {
@@ -344,7 +321,10 @@ function updateCardVisibility(isHidden) {
 function createCardElement(text, cardId, author, color) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
+    
+    // Enable dragging for moving between columns
     cardElement.draggable = true;
+    
     cardElement.dataset.cardId = cardId;
     
     // Apply the background color
@@ -409,4 +389,28 @@ function deleteCardFromBoard(cardId) {
     if (cardToDelete) {
         cardToDelete.remove();
     }
+}
+
+function sortCards() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'sortCards',
+            payload: {}
+        }));
+    } else {
+        console.error('WebSocket is not connected');
+        alert('Failed to sort cards. Please refresh the page.');
+    }
+}
+
+function updateBoardWithSortedCards(sortedCards) {
+    // Clear all columns
+    document.querySelectorAll('.cards').forEach(column => {
+        column.innerHTML = '';
+    });
+
+    // Add cards back in sorted order
+    sortedCards.forEach(card => {
+        addCardToBoard(card);
+    });
 } 
