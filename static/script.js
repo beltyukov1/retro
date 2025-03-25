@@ -282,39 +282,72 @@ async function deleteCard(cardId, cardElement) {
 }
 
 function setupAddCardInputs() {
-    document.querySelectorAll('.add-card-input').forEach(input => {
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const text = input.value.trim();
-                if (text) {
-                    const cardId = Date.now().toString();
-                    const displayName = localStorage.getItem('displayName');
-                    const userColor = localStorage.getItem('userColor');
-                    const columnId = input.dataset.column;
-                    
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        const card = {
-                            id: cardId,
-                            text: text,
-                            column: columnId,
-                            author: displayName,
-                            color: userColor
-                        };
-                        
-                        ws.send(JSON.stringify({
-                            type: 'addCard',
-                            payload: card
-                        }));
-                        
-                        input.value = ''; // Clear the input
-                    } else {
-                        console.error('WebSocket is not connected');
-                        alert('Failed to add card. Please refresh the page.');
-                    }
-                }
+    document.querySelectorAll('.add-card-input').forEach(textarea => {
+        // Set initial height
+        textarea.style.height = '2.5rem';
+        
+        // Auto-resize the textarea when content changes
+        textarea.addEventListener('input', function() {
+            // Temporarily shrink the textarea to get the correct scrollHeight
+            this.style.height = '0';
+            
+            // Set the height based on scrollHeight
+            const scrollHeight = this.scrollHeight;
+            const maxHeight = parseFloat(getComputedStyle(this).maxHeight);
+            
+            // Apply the new height, capped at max height
+            this.style.height = Math.min(scrollHeight, maxHeight) + 'px';
+        });
+
+        // Handle key presses for form submission and new lines
+        textarea.addEventListener('keydown', (e) => {
+            // If Enter is pressed without Ctrl or Cmd, submit the card
+            if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                submitCard(textarea);
+                e.preventDefault(); // Prevent new line
+            }
+            // Ctrl+Enter or Cmd+Enter adds a new line
+        });
+
+        // For mobile compatibility, also add a blur event to submit when losing focus
+        textarea.addEventListener('blur', function() {
+            if (this.value.trim() !== '') {
+                submitCard(this);
             }
         });
     });
+}
+
+// Extracted the card submission logic to a separate function
+function submitCard(textarea) {
+    const text = textarea.value.trim();
+    if (text) {
+        const cardId = Date.now().toString();
+        const displayName = localStorage.getItem('displayName');
+        const userColor = localStorage.getItem('userColor');
+        const columnId = textarea.dataset.column;
+        
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const card = {
+                id: cardId,
+                text: text,
+                column: columnId,
+                author: displayName,
+                color: userColor
+            };
+            
+            ws.send(JSON.stringify({
+                type: 'addCard',
+                payload: card
+            }));
+            
+            textarea.value = ''; // Clear the input
+            textarea.style.height = '2.5rem'; // Reset the height to one line
+        } else {
+            console.error('WebSocket is not connected');
+            alert('Failed to add card. Please refresh the page.');
+        }
+    }
 }
 
 function setupHideContentToggle() {

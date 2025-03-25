@@ -493,6 +493,15 @@ body {
     margin-left: 0.5rem;
     margin-right: 0.5rem;
     font-size: 1rem;
+    resize: none;
+    min-height: 2.5rem;
+    max-height: 5.5rem;
+    height: 2.5rem;
+    overflow-y: auto;
+    line-height: 1.5;
+    font-family: inherit;
+    box-sizing: border-box;
+    display: block;
 }
 
 .add-card-input:focus {
