@@ -132,6 +132,10 @@ function handleWebSocketMessage(message) {
             toggle.checked = message.payload;
             updateCardVisibility(message.payload);
             break;
+        case 'error':
+            // Display error message from server
+            alert(message.payload);
+            break;
         case 'boardState':
             // Handle initial board state
             if (message.payload.cards) {
@@ -237,11 +241,14 @@ function setupDropZones() {
 
 async function deleteCard(cardId, cardElement) {
     if (ws && ws.readyState === WebSocket.OPEN) {
+        const currentUser = localStorage.getItem('displayName');
         ws.send(JSON.stringify({
             type: 'deleteCard',
-            payload: cardId
+            payload: {
+                id: cardId,
+                authorName: currentUser
+            }
         }));
-        cardElement.remove();
     } else {
         console.error('WebSocket is not connected');
         alert('Failed to delete card. Please refresh the page.');
@@ -367,6 +374,11 @@ function createCardElement(text, cardId, author, color) {
         e.stopPropagation();
         deleteCard(cardId, cardElement);
     };
+    
+    // Only show delete button for cards created by the current user
+    if (author !== currentUser) {
+        deleteButton.style.display = 'none';
+    }
     
     const contentDiv = document.createElement('div');
     contentDiv.className = 'card-content';

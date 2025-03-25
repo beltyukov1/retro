@@ -129,24 +129,42 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			})
 
 		case "deleteCard":
-			cardID, ok := msg.Payload.(string)
-			if !ok {
-				log.Printf("Invalid card ID format")
+			// Extract payload as a structure with cardID and authorName
+			payloadBytes, err := json.Marshal(msg.Payload)
+			if err != nil {
+				log.Printf("Error marshaling delete payload: %v", err)
+				continue
+			}
+			var deleteData struct {
+				ID         string `json:"id"`
+				AuthorName string `json:"authorName"`
+			}
+			if err := json.Unmarshal(payloadBytes, &deleteData); err != nil {
+				log.Printf("Error unmarshaling delete data: %v", err)
 				continue
 			}
 
 			board.Lock()
 			for i, card := range board.Cards {
-				if card.ID == cardID {
-					// Remove the card by swapping with the last element and truncating
-					board.Cards[i] = board.Cards[len(board.Cards)-1]
-					board.Cards = board.Cards[:len(board.Cards)-1]
+				if card.ID == deleteData.ID {
+					// Only allow deletion if the author matches
+					if card.Author == deleteData.AuthorName {
+						// Remove the card by swapping with the last element and truncating
+						board.Cards[i] = board.Cards[len(board.Cards)-1]
+						board.Cards = board.Cards[:len(board.Cards)-1]
 
-					// Broadcast the deletion to all clients
-					broadcastToClients(WSMessage{
-						Type:    "cardDeleted",
-						Payload: cardID,
-					})
+						// Broadcast the deletion to all clients
+						broadcastToClients(WSMessage{
+							Type:    "cardDeleted",
+							Payload: deleteData.ID,
+						})
+					} else {
+						// Send error message back to the specific client
+						conn.WriteJSON(WSMessage{
+							Type:    "error",
+							Payload: "You can only delete your own cards",
+						})
+					}
 					break
 				}
 			}
