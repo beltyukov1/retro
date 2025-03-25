@@ -221,7 +221,7 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
-    min-height: 200px;
+    min-height: 100px;
 }
 
 .column h2 {
@@ -364,11 +364,14 @@ body {
 }
 
 .add-card-input {
-    width: 100%;
+    width: calc(100% - 1rem);
     padding: 0.5rem;
     border: 1px solid #e1e1e1;
     border-radius: 4px;
     margin-top: auto;
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+    font-size: 1rem;
 }
 
 .add-card-input:focus {
