@@ -1,8 +1,22 @@
-// Load existing cards when the page loads
+// Check if user is authenticated
 document.addEventListener('DOMContentLoaded', () => {
+    const displayName = localStorage.getItem('displayName');
+    if (!displayName) {
+        window.location.href = '/';
+        return;
+    }
+
+    // Update UI with display name
+    document.getElementById('current-user').textContent = displayName;
+    
     fetchCards();
     setupDropZones();
 });
+
+function logout() {
+    localStorage.removeItem('displayName');
+    window.location.href = '/';
+}
 
 function setupDropZones() {
     const dropZones = document.querySelectorAll('.cards');
@@ -65,7 +79,7 @@ async function fetchCards() {
 
         // Add cards to their respective columns
         cards.forEach(card => {
-            const cardElement = createCardElement(card.text, card.id);
+            const cardElement = createCardElement(card.text, card.id, card.author);
             document.getElementById(card.column).appendChild(cardElement);
         });
     } catch (error) {
@@ -109,6 +123,7 @@ function addCard(columnId) {
         if (text) {
             try {
                 const cardId = Date.now().toString();
+                const displayName = localStorage.getItem('displayName');
                 const response = await fetch('/api/cards', {
                     method: 'POST',
                     headers: {
@@ -117,13 +132,14 @@ function addCard(columnId) {
                     body: JSON.stringify({
                         id: cardId,
                         text: text,
-                        column: columnId
+                        column: columnId,
+                        author: displayName
                     })
                 });
 
                 if (response.ok) {
                     // Replace the editing view with the final card view
-                    const newCardElement = createCardElement(text, cardId);
+                    const newCardElement = createCardElement(text, cardId, displayName);
                     cardElement.parentNode.replaceChild(newCardElement, cardElement);
                 } else {
                     throw new Error('Failed to save card');
@@ -152,7 +168,7 @@ function addCard(columnId) {
     textarea.focus();
 }
 
-function createCardElement(text, cardId) {
+function createCardElement(text, cardId, author) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     cardElement.draggable = true;
@@ -172,6 +188,10 @@ function createCardElement(text, cardId) {
     const textDiv = document.createElement('div');
     textDiv.className = 'card-text';
     textDiv.textContent = text;
+
+    const authorDiv = document.createElement('div');
+    authorDiv.className = 'card-author';
+    authorDiv.textContent = `Added by ${author}`;
     
     const deleteButton = document.createElement('button');
     deleteButton.className = 'delete-button';
@@ -183,7 +203,12 @@ function createCardElement(text, cardId) {
         }
     };
     
-    cardElement.appendChild(textDiv);
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'card-content';
+    contentDiv.appendChild(textDiv);
+    contentDiv.appendChild(authorDiv);
+    
+    cardElement.appendChild(contentDiv);
     cardElement.appendChild(deleteButton);
     
     return cardElement;

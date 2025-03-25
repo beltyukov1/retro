@@ -3,36 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retro Board</title>
+    <title>Retro Board - Welcome</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>Retro Board</h1>
-        <div class="board">
-            <div class="column">
-                <h2>Went Well</h2>
-                <div class="cards" id="went-well">
-                    <!-- Cards will be added here -->
-                </div>
-                <button onclick="addCard('went-well')" class="add-card">+ Add Card</button>
-            </div>
-            <div class="column">
-                <h2>To Improve</h2>
-                <div class="cards" id="to-improve">
-                    <!-- Cards will be added here -->
-                </div>
-                <button onclick="addCard('to-improve')" class="add-card">+ Add Card</button>
-            </div>
-            <div class="column">
-                <h2>Action Items</h2>
-                <div class="cards" id="action-items">
-                    <!-- Cards will be added here -->
-                </div>
-                <button onclick="addCard('action-items')" class="add-card">+ Add Card</button>
+        <div class="welcome-screen">
+            <h1>Welcome to Retro Board</h1>
+            <div class="name-input-container">
+                <input type="text" id="display-name" placeholder="Enter your display name" maxlength="30">
+                <button id="start-button" class="primary-button" onclick="startRetro()">Start Retro</button>
             </div>
         </div>
     </div>
-    <script src="script.js"></script>
+    <script>
+        function startRetro() {
+            const displayName = document.getElementById('display-name').value.trim();
+            if (displayName) {
+                // Store the display name and redirect to the board
+                localStorage.setItem('displayName', displayName);
+                window.location.href = '/board.html';
+            } else {
+                alert('Please enter your display name');
+            }
+        }
+
+        // Handle Enter key
+        document.getElementById('display-name').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                startRetro();
+            }
+        });
+
+        // Clear any existing display name
+        localStorage.removeItem('displayName');
+    </script>
 </body>
 </html> 

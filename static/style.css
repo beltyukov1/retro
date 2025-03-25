@@ -17,12 +17,75 @@ body {
     padding: 2rem;
 }
 
-h1 {
+/* Welcome Screen Styles */
+.welcome-screen {
+    max-width: 500px;
+    margin: 4rem auto;
+    padding: 2rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     text-align: center;
-    margin-bottom: 2rem;
-    color: #2c3e50;
 }
 
+.name-input-container {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+}
+
+#display-name {
+    flex: 1;
+    padding: 0.5rem;
+    font-size: 1rem;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+}
+
+.primary-button {
+    padding: 0.5rem 1.5rem;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.primary-button:hover {
+    background: #2980b9;
+}
+
+/* Header Styles */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.9rem;
+}
+
+.logout-button {
+    padding: 0.3rem 0.8rem;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.logout-button:hover {
+    background: #c0392b;
+}
+
+/* Board Styles */
 .board {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -81,9 +144,19 @@ h1 {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.card-text {
+.card-content {
     flex-grow: 1;
+}
+
+.card-text {
     word-break: break-word;
+    margin-bottom: 0.5rem;
+}
+
+.card-author {
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
 }
 
 .delete-button {
