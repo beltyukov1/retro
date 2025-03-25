@@ -55,6 +55,16 @@ function connectWebSocket() {
             return;
         }
         
+        // If we're on the board page and the connection is closed (server restart)
+        // Redirect to welcome page and log out
+        if (window.location.pathname.includes('board.html')) {
+            console.log('Server connection lost or restarted, logging out...');
+            localStorage.removeItem('displayName');
+            localStorage.removeItem('userColor');
+            window.location.href = '/';
+            return;
+        }
+        
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
             setTimeout(() => {
