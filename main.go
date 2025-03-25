@@ -58,7 +58,6 @@ func main() {
 	http.Handle("/", fs)
 
 	// API endpoints
-	http.HandleFunc("/api/cards", handleCards)
 	http.HandleFunc("/ws", handleWebSocket)
 
 	log.Println("Server starting on http://localhost:8080")
@@ -101,6 +100,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			// Release the user's color if it exists
 			if colorExists {
 				delete(board.UsedColors, color)
+				delete(clientColors, conn)
 				// Broadcast that the color is now available
 				go broadcastToClients(WSMessage{
 					Type:    "colorReleased",
@@ -112,12 +112,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Cleaned up username '%s' on disconnect. Active users now: %v", lowerUsername, board.ActiveUserNames)
 			board.Unlock()
 		}
-
-		// Always clean up the client colors map
-		if colorExists {
-			delete(clientColors, conn)
-		}
-
 		clientUsernamesMutex.Unlock()
 	}()
 
@@ -542,100 +536,6 @@ func broadcastToClients(msg WSMessage) {
 			log.Printf("Error broadcasting to client: %v", err)
 			client.Close()
 		}
-	}
-}
-
-func handleCards(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	switch r.Method {
-	case http.MethodGet:
-		board.RLock()
-		json.NewEncoder(w).Encode(board.Cards)
-		board.RUnlock()
-
-	case http.MethodPost:
-		var card Card
-		if err := json.NewDecoder(r.Body).Decode(&card); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		board.Lock()
-		board.Cards = append(board.Cards, card)
-		board.Unlock()
-
-		// Broadcast the new card to all clients
-		broadcastToClients(WSMessage{
-			Type:    "cardAdded",
-			Payload: card,
-		})
-
-		json.NewEncoder(w).Encode(card)
-
-	case http.MethodDelete:
-		cardID := r.URL.Query().Get("id")
-		if cardID == "" {
-			http.Error(w, "Card ID is required", http.StatusBadRequest)
-			return
-		}
-
-		board.Lock()
-		for i, card := range board.Cards {
-			if card.ID == cardID {
-				// Remove the card by swapping with the last element and truncating
-				board.Cards[i] = board.Cards[len(board.Cards)-1]
-				board.Cards = board.Cards[:len(board.Cards)-1]
-
-				// Broadcast the deletion to all clients
-				broadcastToClients(WSMessage{
-					Type:    "cardDeleted",
-					Payload: cardID,
-				})
-				break
-			}
-		}
-		board.Unlock()
-
-		w.WriteHeader(http.StatusOK)
-
-	case http.MethodPatch:
-		var updateData struct {
-			ID        string `json:"id"`
-			NewColumn string `json:"newColumn"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		board.Lock()
-		for i, card := range board.Cards {
-			if card.ID == updateData.ID {
-				board.Cards[i].Column = updateData.NewColumn
-
-				// Broadcast the update to all clients
-				broadcastToClients(WSMessage{
-					Type: "cardMoved",
-					Payload: struct {
-						ID        string `json:"id"`
-						NewColumn string `json:"newColumn"`
-					}{
-						ID:        updateData.ID,
-						NewColumn: updateData.NewColumn,
-					},
-				})
-
-				json.NewEncoder(w).Encode(board.Cards[i])
-				board.Unlock()
-				return
-			}
-		}
-		board.Unlock()
-		http.Error(w, "Card not found", http.StatusNotFound)
-
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 

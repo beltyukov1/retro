@@ -49,16 +49,15 @@ function connectWebSocket() {
     ws.onclose = (event) => {
         console.log('Disconnected from WebSocket:', event.code, event.reason);
         
-        // Don't try to reconnect if this was an intentional closure (logout)
+        // Don't try to reconnect if this was an intentional logout
         if (event.code === 1000 && event.reason === 'Logout') {
             console.log('Intentional logout, not reconnecting');
             return;
         }
         
-        // If we're on the board page and the connection is closed (server restart)
-        // Redirect to welcome page and log out
+        // Redirect to welcome page if connection lost while on board page
         if (window.location.pathname.includes('board.html')) {
-            console.log('Server connection lost or restarted, logging out...');
+            console.log('Server connection lost, logging out...');
             localStorage.removeItem('displayName');
             localStorage.removeItem('userColor');
             window.location.href = '/';
@@ -95,7 +94,6 @@ function handleVisibilityChange() {
         // Check if WebSocket is closed or closing
         if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
             console.log('Page visible, reconnecting WebSocket...');
-            reconnectAttempts = 0; // Reset attempts when user returns
             connectWebSocket();
         } else if (ws.readyState === WebSocket.OPEN) {
             // If connection is open, request current state
@@ -275,7 +273,7 @@ function setupDropZones() {
     });
 }
 
-async function deleteCard(cardId, cardElement) {
+function deleteCard(cardId) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         const currentUser = localStorage.getItem('displayName');
         ws.send(JSON.stringify({
@@ -478,7 +476,7 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     deleteButton.innerHTML = '&times;';
     deleteButton.onclick = (e) => {
         e.stopPropagation();
-        deleteCard(cardId, cardElement);
+        deleteCard(cardId);
     };
     
     // Only show delete button for cards created by the current user
