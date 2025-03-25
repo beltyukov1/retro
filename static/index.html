@@ -104,16 +104,13 @@
                 const color = button.dataset.color;
                 if (usedColors[color]) {
                     button.disabled = true;
-                    button.style.opacity = '0.5';
-                    button.style.cursor = 'not-allowed';
                     button.classList.remove('active');
                     if (color === selectedColor) {
                         currentColorAvailable = false;
                     }
                 } else {
                     button.disabled = false;
-                    button.style.opacity = '1';
-                    button.style.cursor = 'pointer';
+                    button.classList.remove('active');
                 }
             });
 
@@ -125,6 +122,9 @@
                     nextColor.classList.add('active');
                     selectedColor = nextColor.dataset.color;
                 }
+            } else {
+                // Make sure the selected color has the active class
+                document.querySelector(`.color-option[data-color="${selectedColor}"]`)?.classList.add('active');
             }
         }
 
