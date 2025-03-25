@@ -33,11 +33,13 @@ function connectWebSocket() {
         
         // Request initial board state after connection
         const userColor = localStorage.getItem('userColor');
-        if (userColor) {
+        const displayName = localStorage.getItem('displayName');
+        if (userColor && displayName) {
             ws.send(JSON.stringify({
                 type: 'join',
                 payload: {
-                    color: userColor
+                    color: userColor,
+                    username: displayName
                 }
             }));
         }
@@ -87,11 +89,13 @@ function handleVisibilityChange() {
         } else if (ws.readyState === WebSocket.OPEN) {
             // If connection is open, request current state
             const userColor = localStorage.getItem('userColor');
-            if (userColor) {
+            const displayName = localStorage.getItem('displayName');
+            if (userColor && displayName) {
                 ws.send(JSON.stringify({
                     type: 'join',
                     payload: {
-                        color: userColor
+                        color: userColor,
+                        username: displayName
                     }
                 }));
             }
@@ -135,6 +139,17 @@ function handleWebSocketMessage(message) {
         case 'error':
             // Display error message from server
             alert(message.payload);
+            // If we're on the board page and get an error, it might be a duplicate name error
+            // In this case, we should redirect back to the login page
+            if (window.location.pathname.includes('board.html')) {
+                localStorage.removeItem('displayName');
+                localStorage.removeItem('userColor');
+                window.location.href = '/';
+            }
+            break;
+        case 'joinSuccess':
+            // Successfully joined with username
+            console.log('Successfully joined the board');
             break;
         case 'boardState':
             // Handle initial board state
@@ -171,13 +186,15 @@ function updateColorPicker(usedColors) {
 
 function logout() {
     if (ws) {
-        // Send logout message with the user's color
+        // Send logout message with the user's color and username
         const userColor = localStorage.getItem('userColor');
+        const displayName = localStorage.getItem('displayName');
         if (userColor) {
             ws.send(JSON.stringify({
                 type: 'logout',
                 payload: {
-                    color: userColor
+                    color: userColor,
+                    username: displayName
                 }
             }));
         }

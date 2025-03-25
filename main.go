@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -20,9 +21,10 @@ type Card struct {
 
 type RetroBoard struct {
 	sync.RWMutex
-	Cards       []Card
-	UsedColors  map[string]bool
-	HideContent bool
+	Cards           []Card
+	UsedColors      map[string]bool
+	HideContent     bool
+	ActiveUserNames map[string]bool // map with lowercase usernames for case-insensitive comparison
 }
 
 type WSMessage struct {
@@ -33,6 +35,8 @@ type WSMessage struct {
 var board RetroBoard
 var clients = make(map[*websocket.Conn]bool)
 var clientsMutex sync.RWMutex
+var clientUsernames = make(map[*websocket.Conn]string) // Map to track which connection belongs to which username
+var clientUsernamesMutex sync.RWMutex
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -43,6 +47,8 @@ var upgrader = websocket.Upgrader{
 func main() {
 	// Initialize the board
 	board.UsedColors = make(map[string]bool)
+	board.ActiveUserNames = make(map[string]bool)
+	log.Println("Server starting with clean username registry")
 
 	// Serve static files
 	fs := http.FileServer(http.Dir("static"))
@@ -74,6 +80,22 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		clientsMutex.Lock()
 		delete(clients, conn)
 		clientsMutex.Unlock()
+
+		// Clean up username when connection closes
+		clientUsernamesMutex.Lock()
+		username, exists := clientUsernames[conn]
+		if exists {
+			log.Printf("Connection closed for user: %s", username)
+			delete(clientUsernames, conn)
+
+			// Remove from active usernames
+			board.Lock()
+			lowerUsername := strings.ToLower(username)
+			delete(board.ActiveUserNames, lowerUsername)
+			log.Printf("Cleaned up username '%s' on disconnect. Active users now: %v", lowerUsername, board.ActiveUserNames)
+			board.Unlock()
+		}
+		clientUsernamesMutex.Unlock()
 	}()
 
 	// Send initial board state immediately
@@ -208,14 +230,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			board.Unlock()
 
 		case "join":
-			// Extract color from the payload structure
+			// Extract color and username from the payload structure
 			payloadBytes, err := json.Marshal(msg.Payload)
 			if err != nil {
 				log.Printf("Error marshaling join payload: %v", err)
 				continue
 			}
 			var joinData struct {
-				Color string `json:"color"`
+				Color    string `json:"color"`
+				Username string `json:"username"`
 			}
 			if err := json.Unmarshal(payloadBytes, &joinData); err != nil {
 				log.Printf("Error unmarshaling join data: %v", err)
@@ -227,9 +250,36 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+			if joinData.Username == "" {
+				log.Printf("No username provided in join message")
+				continue
+			}
+
+			// Check if username is already taken (case-insensitive)
+			lowerUsername := strings.ToLower(joinData.Username)
 			board.Lock()
+			log.Printf("Current active usernames: %v", board.ActiveUserNames)
+			if board.ActiveUserNames[lowerUsername] {
+				// Username is taken, send error
+				board.Unlock()
+				log.Printf("Username '%s' already taken", lowerUsername)
+				conn.WriteJSON(WSMessage{
+					Type:    "error",
+					Payload: "This display name is already in use. Please choose a different name.",
+				})
+				continue
+			}
+
+			// Username is available, register it
+			board.ActiveUserNames[lowerUsername] = true
+			log.Printf("Registered username '%s', active users now: %v", lowerUsername, board.ActiveUserNames)
 			board.UsedColors[joinData.Color] = true
 			board.Unlock()
+
+			// Associate this username with the current connection
+			clientUsernamesMutex.Lock()
+			clientUsernames[conn] = joinData.Username
+			clientUsernamesMutex.Unlock()
 
 			// Broadcast the color selection to all clients
 			broadcastToClients(WSMessage{
@@ -237,15 +287,22 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				Payload: joinData.Color,
 			})
 
+			// Send success message
+			conn.WriteJSON(WSMessage{
+				Type:    "joinSuccess",
+				Payload: true,
+			})
+
 		case "logout":
-			// Extract color from the payload structure
+			// Extract color and username from the payload structure
 			payloadBytes, err := json.Marshal(msg.Payload)
 			if err != nil {
 				log.Printf("Error marshaling logout payload: %v", err)
 				continue
 			}
 			var logoutData struct {
-				Color string `json:"color"`
+				Color    string `json:"color"`
+				Username string `json:"username"`
 			}
 			if err := json.Unmarshal(payloadBytes, &logoutData); err != nil {
 				log.Printf("Error unmarshaling logout data: %v", err)
@@ -259,7 +316,18 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			board.Lock()
 			delete(board.UsedColors, logoutData.Color)
+			// Free up username when user logs out if one was provided
+			if logoutData.Username != "" {
+				lowerUsername := strings.ToLower(logoutData.Username)
+				delete(board.ActiveUserNames, lowerUsername)
+				log.Printf("User '%s' logged out, removed from active users. Active users now: %v", lowerUsername, board.ActiveUserNames)
+			}
 			board.Unlock()
+
+			// Remove username association from this connection
+			clientUsernamesMutex.Lock()
+			delete(clientUsernames, conn)
+			clientUsernamesMutex.Unlock()
 
 			// Broadcast the color release to all clients immediately
 			broadcastToClients(WSMessage{
@@ -411,6 +479,7 @@ func handleCards(w http.ResponseWriter, r *http.Request) {
 func getBoardState() WSMessage {
 	board.RLock()
 	defer board.RUnlock()
+
 	return WSMessage{
 		Type: "boardState",
 		Payload: map[string]interface{}{

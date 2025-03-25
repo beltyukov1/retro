@@ -39,6 +39,7 @@
             <button id="start-button" class="primary-button" onclick="joinRetro()">Join Retro</button>
         </div>
     </div>
+    
     <script>
         let selectedColor = '#FFE4E1'; // Default color
         let ws;
@@ -83,6 +84,16 @@
                 case 'colorReleased':
                     delete usedColors[message.payload];
                     updateColorPicker(usedColors);
+                    break;
+                case 'error':
+                    // Display error message from server
+                    alert(message.payload);
+                    // Re-enable the join button
+                    document.getElementById('start-button').disabled = false;
+                    break;
+                case 'joinSuccess':
+                    // Successful join, redirect to board
+                    window.location.href = '/board.html';
                     break;
             }
         }
@@ -137,20 +148,23 @@
         function joinRetro() {
             const displayName = document.getElementById('display-name').value.trim();
             if (displayName) {
-                // Store both the display name and color
+                // Disable the join button to prevent multiple clicks
+                document.getElementById('start-button').disabled = true;
+                
+                // Store both the display name and color in localStorage
                 localStorage.setItem('displayName', displayName);
                 localStorage.setItem('userColor', selectedColor);
                 
-                // Send the selected color
+                // Send the username and color for validation
                 ws.send(JSON.stringify({
                     type: 'join',
                     payload: {
-                        color: selectedColor
+                        color: selectedColor,
+                        username: displayName
                     }
                 }));
                 
-                // Redirect to board page
-                window.location.href = '/board.html';
+                // The redirect will happen after we receive a joinSuccess message
             } else {
                 alert('Please enter your display name');
             }
