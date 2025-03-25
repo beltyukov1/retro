@@ -155,6 +155,11 @@ function handleWebSocketMessage(message) {
             console.log('Successfully joined the board');
             break;
         case 'boardState':
+            // Clear existing cards before adding new ones from board state
+            document.querySelectorAll('.cards').forEach(column => {
+                column.innerHTML = '';
+            });
+            
             // Handle initial board state
             if (message.payload.cards) {
                 message.payload.cards.forEach(card => addCardToBoard(card));
@@ -329,20 +334,52 @@ function setupHideContentToggle() {
 
 function updateCardVisibility(isHidden) {
     const currentUser = localStorage.getItem('displayName');
-    document.querySelectorAll('.card-text').forEach(textElement => {
-        const cardElement = textElement.closest('.card');
+    const sortButton = document.querySelector('.sort-button');
+    
+    // Disable sort button when content is hidden
+    if (sortButton) {
+        if (isHidden) {
+            sortButton.disabled = true;
+            sortButton.style.opacity = '0.5';
+            sortButton.style.cursor = 'not-allowed';
+        } else {
+            sortButton.disabled = false;
+            sortButton.style.opacity = '1';
+            sortButton.style.cursor = 'pointer';
+        }
+    }
+    
+    document.querySelectorAll('.card').forEach(cardElement => {
+        const textElement = cardElement.querySelector('.card-text');
         const authorElement = cardElement.querySelector('.card-author');
+        const likeContainer = cardElement.querySelector('.like-container');
         const isCurrentUserCard = authorElement && authorElement.textContent === currentUser;
         
         if (isHidden && !isCurrentUserCard) {
-            textElement.dataset.originalText = textElement.textContent;
+            // Only save original text if we haven't already (prevents overwriting with "Hidden")
+            if (!textElement.dataset.originalText || textElement.textContent !== 'Hidden') {
+                textElement.dataset.originalText = textElement.textContent;
+            }
             textElement.textContent = 'Hidden';
             textElement.classList.add('hidden-content');
             cardElement.classList.add('has-hidden-content');
+            
+            // Hide like container
+            if (likeContainer) {
+                likeContainer.style.display = 'none';
+            }
         } else {
-            textElement.textContent = textElement.dataset.originalText;
+            // Restore original text if it exists
+            if (textElement.dataset.originalText && textElement.dataset.originalText !== 'Hidden') {
+                textElement.textContent = textElement.dataset.originalText;
+            }
             textElement.classList.remove('hidden-content');
             cardElement.classList.remove('has-hidden-content');
+            
+            // Show like container
+            if (likeContainer) {
+                likeContainer.style.display = 'flex';
+            }
         }
     });
 }
@@ -380,7 +417,9 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     // Check if content should be hidden based on current toggle state and author
     const toggle = document.getElementById('hide-content-toggle');
     const currentUser = localStorage.getItem('displayName');
-    if (toggle && toggle.checked && author !== currentUser) {
+    const shouldHideContent = toggle && toggle.checked && author !== currentUser;
+    
+    if (shouldHideContent) {
         textDiv.textContent = 'Hidden';
         textDiv.classList.add('hidden-content');
         cardElement.classList.add('has-hidden-content');
@@ -417,9 +456,14 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     likeContainer.className = 'like-container';
     likeContainer.dataset.cardId = cardId;
     
+    // Hide like container if content is hidden
+    if (shouldHideContent) {
+        likeContainer.style.display = 'none';
+    }
+    
     const heartIcon = document.createElement('span');
     heartIcon.className = 'heart-icon';
-    heartIcon.innerHTML = '♥';
+    heartIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>';
     if (userLiked) {
         heartIcon.classList.add('filled');
     }
