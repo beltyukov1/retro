@@ -70,6 +70,12 @@
                     usedColors = message.payload.usedColors;
                     updateColorPicker(usedColors);
                     break;
+                case 'boardState':
+                    if (message.payload.usedColors) {
+                        usedColors = message.payload.usedColors;
+                        updateColorPicker(usedColors);
+                    }
+                    break;
                 case 'colorUsed':
                     usedColors[message.payload] = true;
                     updateColorPicker(usedColors);

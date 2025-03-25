@@ -75,7 +75,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		clientsMutex.Unlock()
 	}()
 
-	// Send initial board state
+	// Send initial board state immediately
 	board.RLock()
 	initialState := WSMessage{
 		Type: "boardState",
@@ -159,8 +159,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			var moveData struct {
-				ID        string `json:"id"`
-				NewColumn string `json:"newColumn"`
+				ID          string `json:"id"`
+				NewColumn   string `json:"newColumn"`
+				NewPosition int    `json:"newPosition"`
 			}
 			if err := json.Unmarshal(payloadBytes, &moveData); err != nil {
 				log.Printf("Error unmarshaling move data: %v", err)
@@ -168,17 +169,61 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			board.Lock()
+			var movedCard Card
+			var oldPosition int
+
+			// Find the card and its current position
 			for i, card := range board.Cards {
 				if card.ID == moveData.ID {
-					board.Cards[i].Column = moveData.NewColumn
-
-					// Broadcast the update to all clients
-					broadcastToClients(WSMessage{
-						Type:    "cardMoved",
-						Payload: moveData,
-					})
+					movedCard = card
+					oldPosition = i
 					break
 				}
+			}
+
+			if movedCard.ID != "" {
+				// Remove card from its current position
+				board.Cards = append(board.Cards[:oldPosition], board.Cards[oldPosition+1:]...)
+
+				// Calculate the new position within the target column
+				var columnCards []Card
+				var nonColumnCards []Card
+
+				// Separate cards into column and non-column cards
+				for _, card := range board.Cards {
+					if card.Column == moveData.NewColumn {
+						columnCards = append(columnCards, card)
+					} else {
+						nonColumnCards = append(nonColumnCards, card)
+					}
+				}
+
+				// Update the card's column
+				movedCard.Column = moveData.NewColumn
+
+				// Insert the card at the new position in the column
+				if moveData.NewPosition > len(columnCards) {
+					columnCards = append(columnCards, movedCard)
+				} else {
+					columnCards = append(columnCards[:moveData.NewPosition], append([]Card{movedCard}, columnCards[moveData.NewPosition:]...)...)
+				}
+
+				// Reconstruct the full card list
+				board.Cards = append(columnCards, nonColumnCards...)
+
+				// Broadcast the update to all clients
+				broadcastToClients(WSMessage{
+					Type: "cardMoved",
+					Payload: struct {
+						ID          string `json:"id"`
+						NewColumn   string `json:"newColumn"`
+						NewPosition int    `json:"newPosition"`
+					}{
+						ID:          moveData.ID,
+						NewColumn:   moveData.NewColumn,
+						NewPosition: moveData.NewPosition,
+					},
+				})
 			}
 			board.Unlock()
 

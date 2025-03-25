@@ -108,7 +108,24 @@ function handleWebSocketMessage(message) {
             deleteCardFromBoard(message.payload);
             break;
         case 'cardMoved':
-            moveCardInBoard(message.payload.id, message.payload.newColumn);
+            const { id, newColumn, newPosition } = message.payload;
+            const cardElement = document.querySelector(`[data-card-id="${id}"]`);
+            const columnElement = document.getElementById(newColumn);
+            
+            if (cardElement && columnElement) {
+                if (typeof newPosition === 'number') {
+                    // Handle reordering within the same column
+                    const children = Array.from(columnElement.children);
+                    if (newPosition >= children.length) {
+                        columnElement.appendChild(cardElement);
+                    } else {
+                        columnElement.insertBefore(cardElement, children[newPosition]);
+                    }
+                } else {
+                    // Handle moving to a different column without position
+                    columnElement.appendChild(cardElement);
+                }
+            }
             break;
         case 'colorUsed':
             usedColors[message.payload] = true;
@@ -186,6 +203,12 @@ function setupDropZones() {
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
                 zone.classList.add('drag-over');
+                const afterElement = getDragAfterElement(zone, e.clientY);
+                if (afterElement == null) {
+                    zone.appendChild(draggingElement);
+                } else {
+                    zone.insertBefore(draggingElement, afterElement);
+                }
             }
         });
 
@@ -200,16 +223,17 @@ function setupDropZones() {
             if (cardElement) {
                 const cardId = cardElement.dataset.cardId;
                 const newColumn = zone.id;
+                const newPosition = Array.from(zone.children).indexOf(cardElement);
                 
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
                         type: 'moveCard',
                         payload: {
                             id: cardId,
-                            newColumn: newColumn
+                            newColumn: newColumn,
+                            newPosition: newPosition
                         }
                     }));
-                    zone.appendChild(cardElement);
                 } else {
                     console.error('WebSocket is not connected');
                     alert('Failed to move card. Please refresh the page.');
@@ -217,6 +241,21 @@ function setupDropZones() {
             }
         });
     });
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 async function deleteCard(cardId, cardElement) {
@@ -257,8 +296,6 @@ function setupAddCardInputs() {
                             payload: card
                         }));
                         
-                        const cardElement = createCardElement(text, cardId, displayName, userColor);
-                        document.getElementById(columnId).appendChild(cardElement);
                         input.value = ''; // Clear the input
                     } else {
                         console.error('WebSocket is not connected');
@@ -287,8 +324,13 @@ function setupHideContentToggle() {
 }
 
 function updateCardVisibility(isHidden) {
+    const currentUser = localStorage.getItem('displayName');
     document.querySelectorAll('.card-text').forEach(textElement => {
-        if (isHidden) {
+        const cardElement = textElement.closest('.card');
+        const authorElement = cardElement.querySelector('.card-author');
+        const isCurrentUserCard = authorElement && authorElement.textContent === currentUser;
+        
+        if (isHidden && !isCurrentUserCard) {
             textElement.dataset.originalText = textElement.textContent;
             textElement.textContent = 'Hidden';
             textElement.classList.add('hidden-content');
@@ -326,9 +368,10 @@ function createCardElement(text, cardId, author, color) {
     textDiv.textContent = text;
     textDiv.dataset.originalText = text; // Store original text
     
-    // Check if content should be hidden based on current toggle state
+    // Check if content should be hidden based on current toggle state and author
     const toggle = document.getElementById('hide-content-toggle');
-    if (toggle && toggle.checked) {
+    const currentUser = localStorage.getItem('displayName');
+    if (toggle && toggle.checked && author !== currentUser) {
         textDiv.textContent = 'Hidden';
         textDiv.classList.add('hidden-content');
     }
@@ -342,9 +385,7 @@ function createCardElement(text, cardId, author, color) {
     deleteButton.innerHTML = '&times;';
     deleteButton.onclick = (e) => {
         e.stopPropagation();
-        if (confirm('Are you sure you want to delete this card?')) {
-            deleteCard(cardId, cardElement);
-        }
+        deleteCard(cardId, cardElement);
     };
     
     const contentDiv = document.createElement('div');
@@ -359,23 +400,13 @@ function createCardElement(text, cardId, author, color) {
 }
 
 function addCardToBoard(card) {
-    // Only add the card if it wasn't created by the current user
-    if (card.author !== localStorage.getItem('displayName')) {
-        const cardElement = createCardElement(card.text, card.id, card.author, card.color);
-        document.getElementById(card.column).appendChild(cardElement);
-    }
+    const cardElement = createCardElement(card.text, card.id, card.author, card.color);
+    document.getElementById(card.column).appendChild(cardElement);
 }
 
 function deleteCardFromBoard(cardId) {
     const cardToDelete = document.querySelector(`[data-card-id="${cardId}"]`);
     if (cardToDelete) {
         cardToDelete.remove();
-    }
-}
-
-function moveCardInBoard(cardId, newColumn) {
-    const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
-    if (cardElement) {
-        document.getElementById(newColumn).appendChild(cardElement);
     }
 } 
