@@ -458,7 +458,7 @@ function updateCardVisibility(isHidden) {
     });
 }
 
-function createCardElement(text, cardId, author, color, likes = 0, userLiked = false) {
+function createCardElement(text, cardId, author, color, likes = 0, userLiked = false, noAnimation = false) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     
@@ -535,7 +535,11 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     heartIcon.className = 'heart-icon';
     heartIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>';
     if (userLiked) {
+        // Add filled class but conditionally add a no-animation class when sorting
         heartIcon.classList.add('filled');
+        if (noAnimation) {
+            heartIcon.classList.add('no-animation');
+        }
     }
     
     const likeCount = document.createElement('span');
@@ -547,6 +551,7 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
         const count = parseInt(likeCount.textContent);
         if (!heartIcon.classList.contains('filled')) {
             heartIcon.classList.add('filled');
+            heartIcon.classList.remove('no-animation'); // Ensure animation plays when user clicks
             likeCount.textContent = (count + 1).toString();
             // Send like action to server
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -560,6 +565,7 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
             }
         } else {
             heartIcon.classList.remove('filled');
+            heartIcon.classList.remove('no-animation');
             likeCount.textContent = Math.max(0, count - 1).toString();
             // Send unlike action to server
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -584,10 +590,10 @@ function createCardElement(text, cardId, author, color, likes = 0, userLiked = f
     return cardElement;
 }
 
-function addCardToBoard(card) {
+function addCardToBoard(card, noAnimation = false) {
     const likes = card.likes || 0;
     const userLiked = card.userLiked || false;
-    const cardElement = createCardElement(card.text, card.id, card.author, card.color, likes, userLiked);
+    const cardElement = createCardElement(card.text, card.id, card.author, card.color, likes, userLiked, noAnimation);
     document.getElementById(card.column).appendChild(cardElement);
 }
 
@@ -621,9 +627,9 @@ function updateBoardWithSortedCards(sortedCards) {
         column.innerHTML = '';
     });
 
-    // Add cards back in sorted order
+    // Add cards back in sorted order with noAnimation set to true to prevent heart animation
     sortedCards.forEach(card => {
-        addCardToBoard(card);
+        addCardToBoard(card, true);
     });
 }
 

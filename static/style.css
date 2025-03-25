@@ -379,6 +379,10 @@ body {
     animation: heart-pulse 0.4s ease;
 }
 
+.heart-icon.filled.no-animation {
+    animation: none;
+}
+
 @keyframes heart-pulse {
     0% { transform: scale(1); }
     25% { transform: scale(1.3); }
