@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Board</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Retro Board</h1>
+        <div class="board">
+            <div class="column">
+                <h2>Went Well</h2>
+                <div class="cards" id="went-well">
+                    <!-- Cards will be added here -->
+                </div>
+                <button onclick="addCard('went-well')" class="add-card">+ Add Card</button>
+            </div>
+            <div class="column">
+                <h2>To Improve</h2>
+                <div class="cards" id="to-improve">
+                    <!-- Cards will be added here -->
+                </div>
+                <button onclick="addCard('to-improve')" class="add-card">+ Add Card</button>
+            </div>
+            <div class="column">
+                <h2>Action Items</h2>
+                <div class="cards" id="action-items">
+                    <!-- Cards will be added here -->
+                </div>
+                <button onclick="addCard('action-items')" class="add-card">+ Add Card</button>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html> 
