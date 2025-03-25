@@ -123,6 +123,9 @@ function handleWebSocketMessage(message) {
         case 'cardsSorted':
             updateBoardWithSortedCards(message.payload);
             break;
+        case 'cardLiked':
+            updateCardLikes(message.payload);
+            break;
         case 'colorUsed':
             usedColors[message.payload] = true;
             updateColorPicker(usedColors);
@@ -344,7 +347,7 @@ function updateCardVisibility(isHidden) {
     });
 }
 
-function createCardElement(text, cardId, author, color) {
+function createCardElement(text, cardId, author, color, likes = 0, userLiked = false) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     
@@ -405,6 +408,63 @@ function createCardElement(text, cardId, author, color) {
     contentDiv.appendChild(textDiv);
     contentDiv.appendChild(authorDiv);
     
+    // Create card footer with like feature
+    const cardFooter = document.createElement('div');
+    cardFooter.className = 'card-footer';
+    
+    // Create like container with heart icon and counter
+    const likeContainer = document.createElement('div');
+    likeContainer.className = 'like-container';
+    likeContainer.dataset.cardId = cardId;
+    
+    const heartIcon = document.createElement('span');
+    heartIcon.className = 'heart-icon';
+    heartIcon.innerHTML = '♥';
+    if (userLiked) {
+        heartIcon.classList.add('filled');
+    }
+    
+    const likeCount = document.createElement('span');
+    likeCount.className = 'like-count';
+    likeCount.textContent = likes.toString();
+    
+    // Add click event to like container
+    likeContainer.addEventListener('click', function() {
+        const count = parseInt(likeCount.textContent);
+        if (!heartIcon.classList.contains('filled')) {
+            heartIcon.classList.add('filled');
+            likeCount.textContent = (count + 1).toString();
+            // Send like action to server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'likeCard',
+                    payload: {
+                        cardId: cardId,
+                        liked: true
+                    }
+                }));
+            }
+        } else {
+            heartIcon.classList.remove('filled');
+            likeCount.textContent = Math.max(0, count - 1).toString();
+            // Send unlike action to server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'likeCard',
+                    payload: {
+                        cardId: cardId,
+                        liked: false
+                    }
+                }));
+            }
+        }
+    });
+    
+    likeContainer.appendChild(heartIcon);
+    likeContainer.appendChild(likeCount);
+    cardFooter.appendChild(likeContainer);
+    contentDiv.appendChild(cardFooter);
+    
     cardElement.appendChild(contentDiv);
     cardElement.appendChild(deleteButton);
     
@@ -412,7 +472,9 @@ function createCardElement(text, cardId, author, color) {
 }
 
 function addCardToBoard(card) {
-    const cardElement = createCardElement(card.text, card.id, card.author, card.color);
+    const likes = card.likes || 0;
+    const userLiked = card.userLiked || false;
+    const cardElement = createCardElement(card.text, card.id, card.author, card.color, likes, userLiked);
     document.getElementById(card.column).appendChild(cardElement);
 }
 
@@ -445,4 +507,27 @@ function updateBoardWithSortedCards(sortedCards) {
     sortedCards.forEach(card => {
         addCardToBoard(card);
     });
+}
+
+function updateCardLikes(data) {
+    const { cardId, likeCount, liked } = data;
+    const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
+    
+    if (cardElement) {
+        const likeContainer = cardElement.querySelector('.like-container');
+        const heartIcon = likeContainer.querySelector('.heart-icon');
+        const likeCountElement = likeContainer.querySelector('.like-count');
+        
+        // Update like count
+        likeCountElement.textContent = likeCount.toString();
+        
+        // Update heart icon status if this was the current user's action
+        if (liked !== undefined) {
+            if (liked) {
+                heartIcon.classList.add('filled');
+            } else {
+                heartIcon.classList.remove('filled');
+            }
+        }
+    }
 } 

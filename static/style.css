@@ -336,6 +336,40 @@ body {
     font-style: italic;
 }
 
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+
+.like-container {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.heart-icon {
+    color: #ccc;
+    font-size: 1rem;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.heart-icon.filled {
+    color: #e74c3c;
+}
+
+.like-container:hover .heart-icon {
+    transform: scale(1.1);
+}
+
+.like-count {
+    font-size: 0.8rem;
+    color: #666;
+}
+
 .delete-button {
     background: none;
     border: none;

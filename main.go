@@ -12,11 +12,13 @@ import (
 )
 
 type Card struct {
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	Column string `json:"column"`
-	Author string `json:"author"`
-	Color  string `json:"color"`
+	ID      string          `json:"id"`
+	Text    string          `json:"text"`
+	Column  string          `json:"column"`
+	Author  string          `json:"author"`
+	Color   string          `json:"color"`
+	Likes   int             `json:"likes"`
+	LikedBy map[string]bool `json:"-"` // Track users who liked this card
 }
 
 type RetroBoard struct {
@@ -36,6 +38,7 @@ var board RetroBoard
 var clients = make(map[*websocket.Conn]bool)
 var clientsMutex sync.RWMutex
 var clientUsernames = make(map[*websocket.Conn]string) // Map to track which connection belongs to which username
+var clientColors = make(map[*websocket.Conn]string)    // Map to track which color belongs to which connection
 var clientUsernamesMutex sync.RWMutex
 
 var upgrader = websocket.Upgrader{
@@ -81,9 +84,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		delete(clients, conn)
 		clientsMutex.Unlock()
 
-		// Clean up username when connection closes
+		// Clean up username and color when connection closes
 		clientUsernamesMutex.Lock()
 		username, exists := clientUsernames[conn]
+		color, colorExists := clientColors[conn]
+
 		if exists {
 			log.Printf("Connection closed for user: %s", username)
 			delete(clientUsernames, conn)
@@ -92,24 +97,32 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			board.Lock()
 			lowerUsername := strings.ToLower(username)
 			delete(board.ActiveUserNames, lowerUsername)
+
+			// Release the user's color if it exists
+			if colorExists {
+				delete(board.UsedColors, color)
+				// Broadcast that the color is now available
+				go broadcastToClients(WSMessage{
+					Type:    "colorReleased",
+					Payload: color,
+				})
+				log.Printf("Released color %s for user %s", color, username)
+			}
+
 			log.Printf("Cleaned up username '%s' on disconnect. Active users now: %v", lowerUsername, board.ActiveUserNames)
 			board.Unlock()
 		}
+
+		// Always clean up the client colors map
+		if colorExists {
+			delete(clientColors, conn)
+		}
+
 		clientUsernamesMutex.Unlock()
 	}()
 
 	// Send initial board state immediately
-	board.RLock()
-	initialState := WSMessage{
-		Type: "boardState",
-		Payload: map[string]interface{}{
-			"cards":       board.Cards,
-			"usedColors":  board.UsedColors,
-			"hideContent": board.HideContent,
-		},
-	}
-	board.RUnlock()
-
+	initialState := getBoardState("") // Use empty username for initial state
 	if err := conn.WriteJSON(initialState); err != nil {
 		log.Printf("Error sending initial state: %v", err)
 		return
@@ -139,6 +152,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Error unmarshaling card: %v", err)
 				continue
 			}
+
+			// Initialize the LikedBy map
+			card.LikedBy = make(map[string]bool)
 
 			board.Lock()
 			board.Cards = append(board.Cards, card)
@@ -258,40 +274,53 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			// Check if username is already taken (case-insensitive)
 			lowerUsername := strings.ToLower(joinData.Username)
 			board.Lock()
-			log.Printf("Current active usernames: %v", board.ActiveUserNames)
-			if board.ActiveUserNames[lowerUsername] {
-				// Username is taken, send error
+			if _, exists := board.ActiveUserNames[lowerUsername]; exists {
+				// Username is already in use
 				board.Unlock()
-				log.Printf("Username '%s' already taken", lowerUsername)
 				conn.WriteJSON(WSMessage{
 					Type:    "error",
-					Payload: "This display name is already in use. Please choose a different name.",
+					Payload: "This username is already in use. Please choose another one.",
 				})
 				continue
 			}
 
-			// Username is available, register it
+			// Check if color is already in use
+			if board.UsedColors[joinData.Color] {
+				// Color is already in use
+				board.Unlock()
+				conn.WriteJSON(WSMessage{
+					Type:    "error",
+					Payload: "This color is already in use. Please choose another one.",
+				})
+				continue
+			}
+
+			// Register username and color
 			board.ActiveUserNames[lowerUsername] = true
-			log.Printf("Registered username '%s', active users now: %v", lowerUsername, board.ActiveUserNames)
 			board.UsedColors[joinData.Color] = true
 			board.Unlock()
 
-			// Associate this username with the current connection
+			// Store username for this connection
 			clientUsernamesMutex.Lock()
 			clientUsernames[conn] = joinData.Username
+			// Store color for this connection
+			clientColors[conn] = joinData.Color
 			clientUsernamesMutex.Unlock()
 
-			// Broadcast the color selection to all clients
+			// Notify all clients that a color is now in use
 			broadcastToClients(WSMessage{
 				Type:    "colorUsed",
 				Payload: joinData.Color,
 			})
 
-			// Send success message
+			// Send the join success message
 			conn.WriteJSON(WSMessage{
 				Type:    "joinSuccess",
-				Payload: true,
+				Payload: nil,
 			})
+
+			// Send personalized board state with userLiked status
+			conn.WriteJSON(getBoardState(joinData.Username))
 
 		case "logout":
 			// Extract color and username from the payload structure
@@ -327,6 +356,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			// Remove username association from this connection
 			clientUsernamesMutex.Lock()
 			delete(clientUsernames, conn)
+			delete(clientColors, conn)
 			clientUsernamesMutex.Unlock()
 
 			// Broadcast the color release to all clients immediately
@@ -354,17 +384,123 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		case "sortCards":
 			board.Lock()
-			// Sort cards by author
+			// Sort cards alphabetically by author ONLY
 			sort.Slice(board.Cards, func(i, j int) bool {
 				return board.Cards[i].Author < board.Cards[j].Author
 			})
 			board.Unlock()
 
-			// Broadcast the sorted cards to all clients
-			broadcastToClients(WSMessage{
-				Type:    "cardsSorted",
-				Payload: board.Cards,
-			})
+			// Send personalized sorted cards to each client
+			clientsMutex.RLock()
+			for client := range clients {
+				// Get username for this client
+				clientUsernamesMutex.RLock()
+				username, exists := clientUsernames[client]
+				clientUsernamesMutex.RUnlock()
+
+				// Create personalized card list with userLiked status
+				board.RLock()
+				personalizedCards := make([]map[string]interface{}, len(board.Cards))
+				for i, card := range board.Cards {
+					personalizedCard := map[string]interface{}{
+						"id":     card.ID,
+						"text":   card.Text,
+						"column": card.Column,
+						"author": card.Author,
+						"color":  card.Color,
+						"likes":  card.Likes,
+					}
+
+					// Add userLiked status for authenticated users
+					if exists && card.LikedBy != nil {
+						personalizedCard["userLiked"] = card.LikedBy[username]
+					}
+
+					personalizedCards[i] = personalizedCard
+				}
+				board.RUnlock()
+
+				// Send personalized response to the client
+				client.WriteJSON(WSMessage{
+					Type:    "cardsSorted",
+					Payload: personalizedCards,
+				})
+			}
+			clientsMutex.RUnlock()
+
+		case "likeCard":
+			// Extract payload for like data
+			payloadBytes, err := json.Marshal(msg.Payload)
+			if err != nil {
+				log.Printf("Error marshaling like payload: %v", err)
+				continue
+			}
+			var likeData struct {
+				CardId string `json:"cardId"`
+				Liked  bool   `json:"liked"`
+			}
+			if err := json.Unmarshal(payloadBytes, &likeData); err != nil {
+				log.Printf("Error unmarshaling like data: %v", err)
+				continue
+			}
+
+			// Get the username for this connection
+			clientUsernamesMutex.RLock()
+			username, exists := clientUsernames[conn]
+			clientUsernamesMutex.RUnlock()
+
+			if !exists {
+				conn.WriteJSON(WSMessage{
+					Type:    "error",
+					Payload: "You must be logged in to like cards",
+				})
+				continue
+			}
+
+			board.Lock()
+			for i, card := range board.Cards {
+				if card.ID == likeData.CardId {
+					// Initialize LikedBy map if it doesn't exist
+					if board.Cards[i].LikedBy == nil {
+						board.Cards[i].LikedBy = make(map[string]bool)
+					}
+
+					if likeData.Liked {
+						// Add like
+						if !board.Cards[i].LikedBy[username] {
+							board.Cards[i].LikedBy[username] = true
+							board.Cards[i].Likes++
+						}
+					} else {
+						// Remove like
+						if board.Cards[i].LikedBy[username] {
+							delete(board.Cards[i].LikedBy, username)
+							board.Cards[i].Likes--
+						}
+					}
+
+					// Broadcast the updated likes to all clients
+					broadcastToClients(WSMessage{
+						Type: "cardLiked",
+						Payload: map[string]interface{}{
+							"cardId":    likeData.CardId,
+							"likeCount": board.Cards[i].Likes,
+						},
+					})
+
+					// Send personalized response to the user who liked/unliked
+					conn.WriteJSON(WSMessage{
+						Type: "cardLiked",
+						Payload: map[string]interface{}{
+							"cardId":    likeData.CardId,
+							"likeCount": board.Cards[i].Likes,
+							"liked":     likeData.Liked,
+						},
+					})
+					break
+				}
+			}
+			board.Unlock()
 		}
 	}
 }
@@ -476,14 +612,34 @@ func handleCards(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getBoardState() WSMessage {
+func getBoardState(username string) WSMessage {
 	board.RLock()
 	defer board.RUnlock()
+
+	// Create a copy of the cards with userLiked status
+	cardsWithLikeStatus := make([]map[string]interface{}, len(board.Cards))
+	for i, card := range board.Cards {
+		cardMap := map[string]interface{}{
+			"id":     card.ID,
+			"text":   card.Text,
+			"column": card.Column,
+			"author": card.Author,
+			"color":  card.Color,
+			"likes":  card.Likes,
+		}
+
+		// Add userLiked status if username is provided
+		if username != "" && card.LikedBy != nil {
+			cardMap["userLiked"] = card.LikedBy[username]
+		}
+
+		cardsWithLikeStatus[i] = cardMap
+	}
 
 	return WSMessage{
 		Type: "boardState",
 		Payload: map[string]interface{}{
-			"cards":       board.Cards,
+			"cards":       cardsWithLikeStatus,
 			"usedColors":  board.UsedColors,
 			"hideContent": board.HideContent,
 		},
