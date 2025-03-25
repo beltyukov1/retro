@@ -1,4 +1,5 @@
 let ws;
+let usedColors = {}; // Add global usedColors object
 
 // Check if user is authenticated
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,10 +51,13 @@ function handleWebSocketMessage(message) {
                 column.innerHTML = '';
             });
             // Add all cards from the initial state
-            message.payload.forEach(card => {
+            message.payload.cards.forEach(card => {
                 const cardElement = createCardElement(card.text, card.id, card.author, card.color);
                 document.getElementById(card.column).appendChild(cardElement);
             });
+            // Update color picker with used colors
+            usedColors = message.payload.usedColors;
+            updateColorPicker(usedColors);
             break;
 
         case 'cardAdded':
@@ -80,14 +84,48 @@ function handleWebSocketMessage(message) {
                 document.getElementById(moveData.newColumn).appendChild(cardElement);
             }
             break;
+
+        case 'colorUsed':
+            usedColors[message.payload] = true;
+            updateColorPicker(usedColors);
+            break;
+
+        case 'colorReleased':
+            delete usedColors[message.payload];
+            updateColorPicker(usedColors);
+            break;
     }
+}
+
+function updateColorPicker(usedColors) {
+    document.querySelectorAll('.color-option').forEach(button => {
+        const color = button.dataset.color;
+        if (usedColors[color]) {
+            button.disabled = true;
+            button.style.opacity = '0.5';
+            button.style.cursor = 'not-allowed';
+        } else {
+            button.disabled = false;
+            button.style.opacity = '1';
+            button.style.cursor = 'pointer';
+        }
+    });
 }
 
 function logout() {
     if (ws) {
+        // Send logout message with the user's color
+        const userColor = localStorage.getItem('userColor');
+        if (userColor) {
+            ws.send(JSON.stringify({
+                type: 'logout',
+                color: userColor
+            }));
+        }
         ws.close();
     }
     localStorage.removeItem('displayName');
+    localStorage.removeItem('userColor');
     window.location.href = '/';
 }
 
@@ -228,7 +266,7 @@ function createCardElement(text, cardId, author, color) {
 
     const authorDiv = document.createElement('div');
     authorDiv.className = 'card-author';
-    authorDiv.textContent = `Added by ${author}`;
+    authorDiv.textContent = author;
     
     const deleteButton = document.createElement('button');
     deleteButton.className = 'delete-button';

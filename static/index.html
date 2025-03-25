@@ -16,23 +16,105 @@
             <div class="color-selection">
                 <h3>Choose your card color</h3>
                 <div class="color-options">
-                    <button class="color-option" data-color="#FFB3BA" style="background-color: #FFB3BA"></button>
-                    <button class="color-option" data-color="#BAFFC9" style="background-color: #BAFFC9"></button>
-                    <button class="color-option" data-color="#BAE1FF" style="background-color: #BAE1FF"></button>
-                    <button class="color-option" data-color="#FFFFBA" style="background-color: #FFFFBA"></button>
-                    <button class="color-option" data-color="#FFB3F7" style="background-color: #FFB3F7"></button>
-                    <button class="color-option" data-color="#B3FFF7" style="background-color: #B3FFF7"></button>
+                    <button class="color-option" data-color="#FFE4E1" style="background-color: #FFE4E1"></button>
+                    <button class="color-option" data-color="#E8F4D9" style="background-color: #E8F4D9"></button>
+                    <button class="color-option" data-color="#E0F4FF" style="background-color: #E0F4FF"></button>
+                    <button class="color-option" data-color="#FCE4FF" style="background-color: #FCE4FF"></button>
+                    <button class="color-option" data-color="#FFF4E0" style="background-color: #FFF4E0"></button>
+                    <button class="color-option" data-color="#E4FFF0" style="background-color: #E4FFF0"></button>
+                    <button class="color-option" data-color="#F0E6FF" style="background-color: #F0E6FF"></button>
+                    <button class="color-option" data-color="#FFE8E8" style="background-color: #FFE8E8"></button>
+                    <button class="color-option" data-color="#E0FFE4" style="background-color: #E0FFE4"></button>
+                    <button class="color-option" data-color="#E6F9FF" style="background-color: #E6F9FF"></button>
+                    <button class="color-option" data-color="#FFF0F0" style="background-color: #FFF0F0"></button>
+                    <button class="color-option" data-color="#F4FFE4" style="background-color: #F4FFE4"></button>
+                    <button class="color-option" data-color="#E4E6FF" style="background-color: #E4E6FF"></button>
+                    <button class="color-option" data-color="#FFE4F4" style="background-color: #FFE4F4"></button>
+                    <button class="color-option" data-color="#F0FFF0" style="background-color: #F0FFF0"></button>
+                    <button class="color-option" data-color="#E4F4FF" style="background-color: #E4F4FF"></button>
+                    <button class="color-option" data-color="#FFF0E6" style="background-color: #FFF0E6"></button>
+                    <button class="color-option" data-color="#F4E4FF" style="background-color: #F4E4FF"></button>
                 </div>
             </div>
-            <button id="start-button" class="primary-button" onclick="startRetro()">Start Retro</button>
+            <button id="start-button" class="primary-button" onclick="joinRetro()">Join Retro</button>
         </div>
     </div>
     <script>
-        let selectedColor = '#FFB3BA'; // Default color
+        let selectedColor = '#FFE4E1'; // Default color
+        let ws;
+        let usedColors = {};
+
+        // Set up WebSocket connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                console.log('Connected to WebSocket');
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from WebSocket');
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+        }
+
+        function handleWebSocketMessage(message) {
+            switch (message.type) {
+                case 'init':
+                    usedColors = message.payload.usedColors;
+                    updateColorPicker(usedColors);
+                    break;
+                case 'colorUsed':
+                    usedColors[message.payload] = true;
+                    updateColorPicker(usedColors);
+                    break;
+                case 'colorReleased':
+                    delete usedColors[message.payload];
+                    updateColorPicker(usedColors);
+                    break;
+            }
+        }
+
+        function updateColorPicker(usedColors) {
+            let currentColorAvailable = true;
+            document.querySelectorAll('.color-option').forEach(button => {
+                const color = button.dataset.color;
+                if (usedColors[color]) {
+                    button.disabled = true;
+                    button.style.opacity = '0.5';
+                    button.style.cursor = 'not-allowed';
+                    button.classList.remove('active');
+                    if (color === selectedColor) {
+                        currentColorAvailable = false;
+                    }
+                } else {
+                    button.disabled = false;
+                    button.style.opacity = '1';
+                    button.style.cursor = 'pointer';
+                }
+            });
+
+            // If current color is no longer available, select the next available one
+            if (!currentColorAvailable) {
+                const availableColors = Array.from(document.querySelectorAll('.color-option:not([disabled])'));
+                if (availableColors.length > 0) {
+                    const nextColor = availableColors[0];
+                    nextColor.classList.add('active');
+                    selectedColor = nextColor.dataset.color;
+                }
+            }
+        }
 
         // Set up color selection
         document.querySelectorAll('.color-option').forEach(button => {
             button.addEventListener('click', () => {
+                if (button.disabled) return;
                 // Remove active class from all buttons
                 document.querySelectorAll('.color-option').forEach(btn => {
                     btn.classList.remove('active');
@@ -46,12 +128,20 @@
         // Set default active color
         document.querySelector('.color-option').classList.add('active');
 
-        function startRetro() {
+        function joinRetro() {
             const displayName = document.getElementById('display-name').value.trim();
             if (displayName) {
                 // Store both the display name and color
                 localStorage.setItem('displayName', displayName);
                 localStorage.setItem('userColor', selectedColor);
+                
+                // Send the selected color
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    color: selectedColor
+                }));
+                
+                // Redirect to board page
                 window.location.href = '/board.html';
             } else {
                 alert('Please enter your display name');
@@ -61,13 +151,16 @@
         // Handle Enter key
         document.getElementById('display-name').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                startRetro();
+                joinRetro();
             }
         });
 
         // Clear any existing display name and color
         localStorage.removeItem('displayName');
         localStorage.removeItem('userColor');
+
+        // Connect to WebSocket when the page loads
+        connectWebSocket();
     </script>
 </body>
 </html> 

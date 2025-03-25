@@ -19,7 +19,8 @@ type Card struct {
 
 type RetroBoard struct {
 	sync.RWMutex
-	Cards []Card
+	Cards      []Card
+	UsedColors map[string]bool
 }
 
 type WSMessage struct {
@@ -38,6 +39,9 @@ var upgrader = websocket.Upgrader{
 }
 
 func main() {
+	// Initialize the board
+	board.UsedColors = make(map[string]bool)
+
 	// Serve static files
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/", fs)
@@ -70,20 +74,52 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		clientsMutex.Unlock()
 	}()
 
-	// Send initial cards
+	// Send initial state
 	board.RLock()
 	initialMsg := WSMessage{
-		Type:    "init",
-		Payload: board.Cards,
+		Type: "init",
+		Payload: struct {
+			Cards      []Card          `json:"cards"`
+			UsedColors map[string]bool `json:"usedColors"`
+		}{
+			Cards:      board.Cards,
+			UsedColors: board.UsedColors,
+		},
 	}
 	board.RUnlock()
 	conn.WriteJSON(initialMsg)
 
-	// Handle incoming messages (if needed in the future)
+	// Handle incoming messages
 	for {
-		_, _, err := conn.ReadMessage()
+		var msg struct {
+			Type  string `json:"type"`
+			Color string `json:"color"`
+		}
+		err := conn.ReadJSON(&msg)
 		if err != nil {
 			break
+		}
+
+		if msg.Type == "join" {
+			board.Lock()
+			board.UsedColors[msg.Color] = true
+			board.Unlock()
+
+			// Broadcast the new color to all clients
+			broadcastToClients(WSMessage{
+				Type:    "colorUsed",
+				Payload: msg.Color,
+			})
+		} else if msg.Type == "logout" {
+			board.Lock()
+			delete(board.UsedColors, msg.Color)
+			board.Unlock()
+
+			// Broadcast the color release to all clients
+			broadcastToClients(WSMessage{
+				Type:    "colorReleased",
+				Payload: msg.Color,
+			})
 		}
 	}
 }
